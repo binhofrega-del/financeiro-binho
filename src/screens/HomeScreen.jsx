@@ -62,7 +62,7 @@ export default function HomeScreen({ setAba, irParaFluxo }) {
       <div style={{ background: '#16a34a', padding: '16px 20px 28px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <img src="/icon.svg" alt="Logo" style={{ width: 44, height: 44, borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }} />
+            <img src={`${import.meta.env.BASE_URL}icon.svg`} alt="Logo" style={{ width: 44, height: 44, borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }} />
             <div>
               <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13 }}>{saudacao},</p>
               <h2 style={{ color: 'white', fontSize: 22, fontWeight: 700 }}>Binho</h2>

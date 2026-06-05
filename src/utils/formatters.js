@@ -25,19 +25,14 @@ export function corDoTipo(tipo) {
   return '#1d4ed8';
 }
 
-// Mapa de logos por nome de banco/conta (match parcial, case-insensitive)
-export const logosBanco = {
-  'nubank': '/logo-nubank.svg',
-  'santander': '/logo-santander.svg',
-};
-
 // Retorna o logo do banco se existir, ou null
+// Usa BASE_URL para funcionar tanto local quanto no GitHub Pages
 export function logoParaBanco(nome) {
   if (!nome) return null;
   const lower = nome.toLowerCase();
-  for (const [banco, logo] of Object.entries(logosBanco)) {
-    if (lower.includes(banco)) return logo;
-  }
+  const base = import.meta.env.BASE_URL;
+  if (lower.includes('nubank')) return `${base}logo-nubank.svg`;
+  if (lower.includes('santander')) return `${base}logo-santander.svg`;
   return null;
 }
 

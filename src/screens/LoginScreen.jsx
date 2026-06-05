@@ -9,7 +9,7 @@ export default function LoginScreen({ onLogin, status }) {
       padding: 32,
     }}>
       {/* Logo */}
-      <img src="/icon.svg" alt="Logo" style={{ width: 100, height: 100, borderRadius: 24, marginBottom: 24, boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }} />
+      <img src={`${import.meta.env.BASE_URL}icon.svg`} alt="Logo" style={{ width: 100, height: 100, borderRadius: 24, marginBottom: 24, boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }} />
 
       <h1 style={{ color: 'white', fontSize: 26, fontWeight: 800, marginBottom: 6 }}>
         Financeiro Binho
