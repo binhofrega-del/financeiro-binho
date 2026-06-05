@@ -79,25 +79,51 @@ export function AppProvider({ children }) {
     }
   }, [dados]);
 
-  // Inicializa Google Drive ao abrir o app
+  // Inicializa Google Drive — tenta restaurar sessão automaticamente
   useEffect(() => {
     const timer = setTimeout(async () => {
       try {
-        await initGoogleDrive((status) => setDriveStatus(status));
-        setDriveStatus('desconectado');
+        await initGoogleDrive(
+          (status) => setDriveStatus(status),
+          // Callback quando dados são carregados do Drive
+          (dadosDrive) => {
+            if (dadosDrive) setDados(dadosDrive);
+          }
+        );
       } catch {
         setDriveStatus('desconectado');
       }
-    }, 1500); // aguarda scripts Google carregarem
+    }, 1000);
     return () => clearTimeout(timer);
   }, []);
 
-  async function conectarDrive() {
+  // Sincroniza ao voltar para o app (ex: iPhone vindo do background)
+  useEffect(() => {
+    async function aoFocar() {
+      if (isSignedIn()) {
+        setDriveStatus('sincronizando');
+        try {
+          const dadosDrive = await loadFromDrive();
+          if (dadosDrive) setDados(dadosDrive);
+          setDriveStatus('conectado');
+        } catch { setDriveStatus('conectado'); }
+      }
+    }
+    window.addEventListener('focus', aoFocar);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') aoFocar();
+    });
+    return () => {
+      window.removeEventListener('focus', aoFocar);
+    };
+  }, []);
+
+  function conectarDrive() {
     setDriveStatus('sincronizando');
     signIn();
   }
 
-  async function desconectarDrive() {
+  function desconectarDrive() {
     signOut();
     setDriveStatus('desconectado');
   }
@@ -106,13 +132,8 @@ export function AppProvider({ children }) {
     setDriveStatus('sincronizando');
     try {
       const dadosDrive = await loadFromDrive();
-      if (dadosDrive) {
-        setDados(dadosDrive);
-        setDriveStatus('conectado');
-      }
-    } catch {
-      setDriveStatus('erro');
-    }
+      if (dadosDrive) { setDados(dadosDrive); setDriveStatus('conectado'); }
+    } catch { setDriveStatus('erro'); }
   }
 
   // CONTAS
