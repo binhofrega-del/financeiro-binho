@@ -39,6 +39,7 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
   const [detalhe, setDetalhe] = useState(null);
   const [filtroAberto, setFiltroAberto] = useState(false);
   const [faturaParaPagar, setFaturaParaPagar] = useState(null);
+  const [periodoDropdown, setPeriodoDropdown] = useState(false);
   const [filtros, setFiltros] = useState(
     filtroVindoDaHome ? { ...filtroInicial, ...filtroVindoDaHome } : filtroInicial
   );
@@ -160,14 +161,38 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
             {temFiltroAtivo && <span style={{ position:'absolute', top:4, right:4, width:8, height:8, background:'#fbbf24', borderRadius:'50%' }} />}
           </button>
         </div>
-        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:8, position:'relative' }}>
           <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'space-between', background:'rgba(255,255,255,0.15)', borderRadius:12, padding:'6px 10px' }}>
             {filtros.periodo==='Mês atual'||filtros.periodo==='Período personalizado' ? <button onClick={() => mudarMes(-1)} style={navBtn}><ChevronLeft size={20}/></button> : <div style={{width:28}}/>}
-            <span style={{ color:'white', fontWeight:700, fontSize:15 }}>{tituloPeriodo}</span>
+            {/* Clica no título para abrir dropdown de período */}
+            <button onClick={() => setPeriodoDropdown(v => !v)}
+              style={{ background:'none', border:'none', color:'white', fontWeight:700, fontSize:15, cursor:'pointer', padding:'2px 8px', borderRadius:8 }}>
+              {tituloPeriodo} ▾
+            </button>
             {filtros.periodo==='Mês atual'||filtros.periodo==='Período personalizado' ? <button onClick={() => mudarMes(1)} style={navBtn}><ChevronRight size={20}/></button> : <div style={{width:28}}/>}
           </div>
           {(mesAtual!==new Date().getMonth()||anoAtual!==new Date().getFullYear()||filtros.periodo!=='Mês atual') && (
             <button onClick={() => { setMesAtual(new Date().getMonth()); setAnoAtual(new Date().getFullYear()); setFiltros(f=>({...f,periodo:'Mês atual'})); }} style={{ background:'white', color:'#16a34a', border:'none', borderRadius:10, padding:'6px 10px', fontWeight:700, fontSize:12, cursor:'pointer', whiteSpace:'nowrap' }}>Hoje</button>
+          )}
+
+          {/* Dropdown de período */}
+          {periodoDropdown && (
+            <>
+              <div onClick={() => setPeriodoDropdown(false)} style={{ position:'fixed', inset:0, zIndex:19 }} />
+              <div style={{ position:'absolute', top:'110%', left:0, right:0, background:'white', borderRadius:14, boxShadow:'0 8px 24px rgba(0,0,0,0.15)', zIndex:20, overflow:'hidden' }}>
+                {[
+                  { label:'Hoje', action: () => { setFiltros(f=>({...f,periodo:'Hoje'})); setMesAtual(new Date().getMonth()); setAnoAtual(new Date().getFullYear()); }},
+                  { label:'Esta semana', action: () => setFiltros(f=>({...f,periodo:'Últimos 7 dias'})) },
+                  { label:'Este mês', action: () => { setFiltros(f=>({...f,periodo:'Mês atual'})); setMesAtual(new Date().getMonth()); setAnoAtual(new Date().getFullYear()); }},
+                  { label:'Escolher período', action: () => setFiltroAberto(true) },
+                ].map((op, i, arr) => (
+                  <button key={op.label} onClick={() => { op.action(); setPeriodoDropdown(false); }}
+                    style={{ width:'100%', border:'none', background:'none', padding:'14px 18px', textAlign:'center', fontSize:15, fontWeight:600, color:'#111', cursor:'pointer', borderBottom: i < arr.length-1 ? '1px solid #f3f4f6' : 'none' }}>
+                    {op.label}
+                  </button>
+                ))}
+              </div>
+            </>
           )}
         </div>
       </div>
