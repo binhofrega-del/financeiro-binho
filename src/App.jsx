@@ -10,12 +10,12 @@ import LoginScreen from './screens/LoginScreen';
 function AppInner() {
   const [aba, setAba] = useState('home');
   const [filtroFluxo, setFiltroFluxo] = useState(null);
-  const { driveStatus, conectarDrive } = useApp();
+  const { driveStatus, autenticado, conectarDrive } = useApp();
 
-  // Mostra tela de login enquanto não conectado ao Drive
-  const logado = driveStatus === 'conectado' || driveStatus === 'salvando';
+  // Mostra login APENAS se nunca autenticou — sync/salvamento não interrompe o app
+  const mostrarLogin = !autenticado;
 
-  if (!logado) {
+  if (mostrarLogin) {
     return (
       <div style={{ height: '100dvh', maxWidth: 480, margin: '0 auto' }}>
         <LoginScreen onLogin={conectarDrive} status={driveStatus} />

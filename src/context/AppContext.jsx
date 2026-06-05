@@ -66,7 +66,8 @@ function carregarDados() {
 
 export function AppProvider({ children }) {
   const [dados, setDados] = useState(carregarDados);
-  const [driveStatus, setDriveStatus] = useState('iniciando'); // iniciando | desconectado | sincronizando | salvando | conectado | erro
+  const [driveStatus, setDriveStatus] = useState('iniciando'); // iniciando = verifica token salvo
+  const [autenticado, setAutenticado] = useState(!!localStorage.getItem('fin_binho_token')); // iniciando | desconectado | sincronizando | salvando | conectado | erro
   const saveTimer = useRef(null);
 
   // Salva no localStorage sempre
@@ -120,11 +121,13 @@ export function AppProvider({ children }) {
 
   function conectarDrive() {
     setDriveStatus('sincronizando');
+    setAutenticado(true);
     signIn();
   }
 
   function desconectarDrive() {
     signOut();
+    setAutenticado(false);
     setDriveStatus('desconectado');
   }
 
@@ -283,7 +286,7 @@ export function AppProvider({ children }) {
       adicionarConta, editarConta, removerConta,
       adicionarCartao, editarCartao, removerCartao,
       saldoInicialTotal,
-      driveStatus, conectarDrive, desconectarDrive, sincronizarDrive,
+      driveStatus, autenticado, conectarDrive, desconectarDrive, sincronizarDrive,
       adicionarLancamento, adicionarVariosLancamentos, editarLancamento, removerLancamento, removerParcelasDoGrupo, togglePago, togglePagoFixo, toggleFaturaPaga, pagarFatura, desfazerFatura,
       adicionarCategoria,
     }}>
