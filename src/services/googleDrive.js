@@ -20,9 +20,10 @@ function tokenSalvo() {
     const raw = localStorage.getItem(TOKEN_KEY);
     if (!raw) return null;
     const token = JSON.parse(raw);
-    // Token válido se não expirou (com 5min de margem)
-    if (Date.now() < token.expiry - 300000) return token;
-    localStorage.removeItem(TOKEN_KEY);
+    // Token válido se não expirou (com 2min de margem)
+    if (Date.now() < token.expiry - 120000) return token;
+    // Token expirado mas mantém a chave para saber que já autorizou antes
+    // (não remove TOKEN_KEY para que signIn() use prompt: '')
     return null;
   } catch { return null; }
 }
@@ -93,7 +94,9 @@ export function initGoogleDrive(statusCallback, dadosCallback) {
 
 export function signIn() {
   if (!tokenClient) return;
-  tokenClient.requestAccessToken({ prompt: 'consent' });
+  // Usa 'select_account' apenas na primeira vez, '' nas demais (sem tela de consentimento)
+  const jaAutorizouAntes = !!localStorage.getItem(TOKEN_KEY);
+  tokenClient.requestAccessToken({ prompt: jaAutorizouAntes ? '' : 'consent' });
 }
 
 export function signOut() {
