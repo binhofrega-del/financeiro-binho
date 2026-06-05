@@ -8,61 +8,97 @@ import FiltroModal from '../components/FiltroModal';
 import ModalPagarFatura from '../components/ModalPagarFatura';
 import IconeBanco from '../components/IconeBanco';
 
-const filtroInicial = { tipos: [], situacao: [], contaIds: [], cartaoIds: [], categorias: [], periodo: 'Mês atual', busca: '' };
+const filtroInicial = { tipos: [], situacao: [], contaIds: [], cartaoIds: [], categorias: [], periodo: 'mes', busca: '' };
 
-function calcularIntervalo(filtros, mesAtual, anoAtual) {
-  const { periodo, dataInicio, dataFim } = filtros;
-  const hoje = new Date();
-  hoje.setHours(23, 59, 59, 999);
+function toStr(d) { return d.toISOString().slice(0,10); }
+function addDias(d, n) { const r=new Date(d); r.setDate(r.getDate()+n); return r; }
+
+// Calcula início/fim baseado no modo de período e data de referência
+function calcularIntervalo(modo, dataRef) {
+  const d = new Date(dataRef+'T00:00:00');
   let inicio, fim;
-  switch (periodo) {
-    case 'Hoje': inicio = new Date(); inicio.setHours(0,0,0,0); fim = hoje; break;
-    case 'Este ano': inicio = new Date(hoje.getFullYear(),0,1); fim = new Date(hoje.getFullYear(),11,31,23,59,59); break;
-    case 'Últimos 7 dias': inicio = new Date(hoje); inicio.setDate(hoje.getDate()-6); inicio.setHours(0,0,0,0); fim = hoje; break;
-    case 'Últimos 15 dias': inicio = new Date(hoje); inicio.setDate(hoje.getDate()-14); inicio.setHours(0,0,0,0); fim = hoje; break;
-    case 'Últimos 30 dias': inicio = new Date(hoje); inicio.setDate(hoje.getDate()-29); inicio.setHours(0,0,0,0); fim = hoje; break;
-    case 'Período personalizado':
-      if (dataInicio && dataFim) { inicio = new Date(dataInicio+'T00:00:00'); fim = new Date(dataFim+'T23:59:59'); }
-      else { inicio = new Date(anoAtual,mesAtual,1); fim = new Date(anoAtual,mesAtual+1,0,23,59,59); }
-      break;
-    default: inicio = new Date(anoAtual,mesAtual,1); fim = new Date(anoAtual,mesAtual+1,0,23,59,59);
+  if (modo === 'dia') {
+    inicio = new Date(d); inicio.setHours(0,0,0,0);
+    fim = new Date(d); fim.setHours(23,59,59,999);
+  } else if (modo === 'semana') {
+    // Semana: segunda a domingo
+    const diaSemana = d.getDay(); // 0=dom,1=seg,...
+    const diffSeg = diaSemana === 0 ? -6 : 1 - diaSemana;
+    inicio = addDias(d, diffSeg); inicio.setHours(0,0,0,0);
+    fim = addDias(inicio, 6); fim.setHours(23,59,59,999);
+  } else if (modo === 'mes') {
+    inicio = new Date(d.getFullYear(), d.getMonth(), 1);
+    fim = new Date(d.getFullYear(), d.getMonth()+1, 0, 23,59,59);
+  } else if (modo === 'personalizado') {
+    // dataRef = 'inicio|fim'
+    const [ini, f] = dataRef.split('|');
+    inicio = new Date(ini+'T00:00:00');
+    fim = new Date(f+'T23:59:59');
   }
   return { inicio, fim };
 }
 
+function tituloPeriodo(modo, dataRef) {
+  if (modo === 'dia') {
+    const d = new Date(dataRef+'T00:00:00');
+    const dias = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+    return `${dias[d.getDay()]}, ${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+  }
+  if (modo === 'semana') {
+    const { inicio, fim } = calcularIntervalo('semana', dataRef);
+    return `${String(inicio.getDate()).padStart(2,'0')}/${String(inicio.getMonth()+1).padStart(2,'0')} – ${String(fim.getDate()).padStart(2,'0')}/${String(fim.getMonth()+1).padStart(2,'0')}`;
+  }
+  if (modo === 'mes') {
+    const d = new Date(dataRef+'T00:00:00');
+    return `${nomeMes(d.getMonth())} ${d.getFullYear()}`;
+  }
+  if (modo === 'personalizado') {
+    const [ini, f] = dataRef.split('|');
+    return `${ini.slice(8,10)}/${ini.slice(5,7)} – ${f.slice(8,10)}/${f.slice(5,7)}`;
+  }
+  return '';
+}
+
+function navegar(modo, dataRef, dir) {
+  const d = new Date(dataRef+'T00:00:00');
+  if (modo === 'dia') return toStr(addDias(d, dir));
+  if (modo === 'semana') return toStr(addDias(d, dir*7));
+  if (modo === 'mes') {
+    d.setMonth(d.getMonth() + dir);
+    return toStr(new Date(d.getFullYear(), d.getMonth(), 1));
+  }
+  return dataRef;
+}
+
 export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
   const { lancamentos, cartoes, saldoGeral, saldoInicialTotal, togglePago, togglePagoFixo, toggleFaturaPaga, removerLancamento } = useApp();
-  const [mesAtual, setMesAtual] = useState(new Date().getMonth());
-  const [anoAtual, setAnoAtual] = useState(new Date().getFullYear());
+  const hoje = toStr(new Date());
+  const [modo, setModo] = useState('mes');           // dia | semana | mes | personalizado
+  const [dataRef, setDataRef] = useState(toStr(new Date(new Date().getFullYear(), new Date().getMonth(), 1)));
+  const [periodoDropdown, setPeriodoDropdown] = useState(false);
+  const [showCustom, setShowCustom] = useState(false);
+  const [customIni, setCustomIni] = useState('');
+  const [customFim, setCustomFim] = useState('');
   const [modalAberto, setModalAberto] = useState(false);
   const [editando, setEditando] = useState(null);
   const [detalhe, setDetalhe] = useState(null);
   const [filtroAberto, setFiltroAberto] = useState(false);
   const [faturaParaPagar, setFaturaParaPagar] = useState(null);
-  const [periodoDropdown, setPeriodoDropdown] = useState(false);
-  const [filtros, setFiltros] = useState(
-    filtroVindoDaHome ? { ...filtroInicial, ...filtroVindoDaHome } : filtroInicial
-  );
+  const [filtros, setFiltros] = useState(filtroVindoDaHome ? { ...filtroInicial, ...filtroVindoDaHome } : filtroInicial);
 
   const temFiltroAtivo = filtros.tipos.length > 0 || filtros.situacao.length > 0 ||
     filtros.contaIds.length > 0 || filtros.cartaoIds.length > 0 ||
-    filtros.categorias.length > 0 || filtros.busca || filtros.periodo !== 'Mês atual';
+    filtros.categorias.length > 0 || filtros.busca;
 
-  const tituloPeriodo = filtros.periodo === 'Período personalizado' && filtros.dataInicio && filtros.dataFim
-    ? `${filtros.dataInicio.slice(8,10)}/${filtros.dataInicio.slice(5,7)} – ${filtros.dataFim.slice(8,10)}/${filtros.dataFim.slice(5,7)}`
-    : filtros.periodo !== 'Mês atual' ? filtros.periodo : `${nomeMes(mesAtual)} ${anoAtual}`;
-
-  function mudarMes(dir) {
-    let m = mesAtual + dir, a = anoAtual;
-    if (m > 11) { m = 0; a++; } if (m < 0) { m = 11; a--; }
-    setMesAtual(m); setAnoAtual(a);
-  }
+  // Compatibilidade com filtroVindoDaHome (conta filter)
+  const mesAtual = new Date(dataRef+'T00:00:00').getMonth();
+  const anoAtual = new Date(dataRef+'T00:00:00').getFullYear();
 
   function abrirEditar(lanc) { setDetalhe(null); setEditando(lanc); setModalAberto(true); }
   function fecharModal() { setModalAberto(false); setEditando(null); }
 
   const lancFiltrados = useMemo(() => {
-    const { inicio, fim } = calcularIntervalo(filtros, mesAtual, anoAtual);
+    const { inicio, fim } = calcularIntervalo(modo, dataRef);
     const mesAno = `${anoAtual}-${String(mesAtual+1).padStart(2,'0')}`;
     let lista = lancamentos
       .filter(l => !l.cartaoId && l.cartaoId !== 0)
@@ -96,7 +132,7 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
     if (filtros.cartaoIds.length > 0) lista = lista.filter(l => filtros.cartaoIds.includes(l.cartaoId));
     if (filtros.categorias.length > 0) lista = lista.filter(l => filtros.categorias.includes(l.categoria));
     return lista.sort((a,b) => a.data.localeCompare(b.data));
-  }, [lancamentos, mesAtual, anoAtual, filtros]);
+  }, [lancamentos, modo, dataRef, filtros]);
 
   const faturasMes = useMemo(() => {
     const mesAno = `${anoAtual}-${String(mesAtual+1).padStart(2,'0')}`;
@@ -161,36 +197,58 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
             {temFiltroAtivo && <span style={{ position:'absolute', top:4, right:4, width:8, height:8, background:'#fbbf24', borderRadius:'50%' }} />}
           </button>
         </div>
-        <div style={{ display:'flex', alignItems:'center', gap:8, position:'relative' }}>
-          <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'space-between', background:'rgba(255,255,255,0.15)', borderRadius:12, padding:'6px 10px' }}>
-            {filtros.periodo==='Mês atual'||filtros.periodo==='Período personalizado' ? <button onClick={() => mudarMes(-1)} style={navBtn}><ChevronLeft size={20}/></button> : <div style={{width:28}}/>}
-            {/* Clica no título para abrir dropdown de período */}
-            <button onClick={() => setPeriodoDropdown(v => !v)}
-              style={{ background:'none', border:'none', color:'white', fontWeight:700, fontSize:15, cursor:'pointer', padding:'2px 8px', borderRadius:8 }}>
-              {tituloPeriodo} ▾
-            </button>
-            {filtros.periodo==='Mês atual'||filtros.periodo==='Período personalizado' ? <button onClick={() => mudarMes(1)} style={navBtn}><ChevronRight size={20}/></button> : <div style={{width:28}}/>}
+        {/* Seletor de período */}
+        <div style={{ position:'relative' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'space-between', background:'rgba(255,255,255,0.15)', borderRadius:12, padding:'6px 10px' }}>
+              <button onClick={() => setDataRef(navegar(modo, dataRef, -1))} style={navBtn}><ChevronLeft size={20}/></button>
+              <button onClick={() => setPeriodoDropdown(v=>!v)}
+                style={{ background:'none', border:'none', color:'white', fontWeight:700, fontSize:15, cursor:'pointer', padding:'2px 8px' }}>
+                {tituloPeriodo(modo, dataRef)} ▾
+              </button>
+              <button onClick={() => setDataRef(navegar(modo, dataRef, 1))} style={navBtn}><ChevronRight size={20}/></button>
+            </div>
+            {dataRef !== toStr(new Date(new Date().getFullYear(), new Date().getMonth(), 1)) || modo !== 'mes' ? (
+              <button onClick={() => { setModo('mes'); setDataRef(toStr(new Date(new Date().getFullYear(), new Date().getMonth(), 1))); }}
+                style={{ background:'white', color:'#16a34a', border:'none', borderRadius:10, padding:'6px 10px', fontWeight:700, fontSize:12, cursor:'pointer', whiteSpace:'nowrap' }}>Hoje</button>
+            ) : null}
           </div>
-          {(mesAtual!==new Date().getMonth()||anoAtual!==new Date().getFullYear()||filtros.periodo!=='Mês atual') && (
-            <button onClick={() => { setMesAtual(new Date().getMonth()); setAnoAtual(new Date().getFullYear()); setFiltros(f=>({...f,periodo:'Mês atual'})); }} style={{ background:'white', color:'#16a34a', border:'none', borderRadius:10, padding:'6px 10px', fontWeight:700, fontSize:12, cursor:'pointer', whiteSpace:'nowrap' }}>Hoje</button>
-          )}
 
-          {/* Dropdown de período */}
+          {/* Dropdown */}
           {periodoDropdown && (
             <>
               <div onClick={() => setPeriodoDropdown(false)} style={{ position:'fixed', inset:0, zIndex:19 }} />
               <div style={{ position:'absolute', top:'110%', left:0, right:0, background:'white', borderRadius:14, boxShadow:'0 8px 24px rgba(0,0,0,0.15)', zIndex:20, overflow:'hidden' }}>
                 {[
-                  { label:'Hoje', action: () => { setFiltros(f=>({...f,periodo:'Hoje'})); setMesAtual(new Date().getMonth()); setAnoAtual(new Date().getFullYear()); }},
-                  { label:'Esta semana', action: () => setFiltros(f=>({...f,periodo:'Últimos 7 dias'})) },
-                  { label:'Este mês', action: () => { setFiltros(f=>({...f,periodo:'Mês atual'})); setMesAtual(new Date().getMonth()); setAnoAtual(new Date().getFullYear()); }},
-                  { label:'Escolher período', action: () => setFiltroAberto(true) },
+                  { label:'Hoje', fn: () => { setModo('dia'); setDataRef(hoje); }},
+                  { label:'Esta semana', fn: () => { setModo('semana'); setDataRef(hoje); }},
+                  { label:'Este mês', fn: () => { setModo('mes'); setDataRef(toStr(new Date(new Date().getFullYear(), new Date().getMonth(), 1))); }},
+                  { label:'Escolher período', fn: () => setShowCustom(true) },
                 ].map((op, i, arr) => (
-                  <button key={op.label} onClick={() => { op.action(); setPeriodoDropdown(false); }}
-                    style={{ width:'100%', border:'none', background:'none', padding:'14px 18px', textAlign:'center', fontSize:15, fontWeight:600, color:'#111', cursor:'pointer', borderBottom: i < arr.length-1 ? '1px solid #f3f4f6' : 'none' }}>
+                  <button key={op.label} onClick={() => { op.fn(); setPeriodoDropdown(false); }}
+                    style={{ width:'100%', border:'none', background:'none', padding:'14px 18px', textAlign:'center', fontSize:15, fontWeight:600, color:'#111', cursor:'pointer', borderBottom: i<arr.length-1?'1px solid #f3f4f6':'none' }}>
                     {op.label}
                   </button>
                 ))}
+              </div>
+            </>
+          )}
+
+          {/* Seletor de período personalizado */}
+          {showCustom && (
+            <>
+              <div onClick={() => setShowCustom(false)} style={{ position:'fixed', inset:0, zIndex:19 }} />
+              <div style={{ position:'absolute', top:'110%', left:0, right:0, background:'white', borderRadius:14, boxShadow:'0 8px 24px rgba(0,0,0,0.15)', zIndex:20, padding:16 }}>
+                <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:14 }}>
+                  <input type="date" value={customIni} onChange={e=>setCustomIni(e.target.value)}
+                    style={{ border:'1.5px solid #e5e7eb', borderRadius:10, padding:'10px 12px', fontSize:15, outline:'none' }} />
+                  <input type="date" value={customFim} onChange={e=>setCustomFim(e.target.value)}
+                    style={{ border:'1.5px solid #e5e7eb', borderRadius:10, padding:'10px 12px', fontSize:15, outline:'none' }} />
+                </div>
+                <button onClick={() => { if(customIni&&customFim){ setModo('personalizado'); setDataRef(`${customIni}|${customFim}`); setShowCustom(false); } }}
+                  style={{ width:'100%', background:'#16a34a', color:'white', border:'none', borderRadius:10, padding:12, fontWeight:700, fontSize:15, cursor:'pointer', marginBottom:8 }}>Ok</button>
+                <button onClick={() => setShowCustom(false)}
+                  style={{ width:'100%', background:'none', border:'none', color:'#16a34a', fontWeight:600, fontSize:14, cursor:'pointer' }}>voltar</button>
               </div>
             </>
           )}
