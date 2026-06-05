@@ -8,6 +8,7 @@ import ModalLancamento from '../components/ModalLancamento';
 import DetalheModal from '../components/DetalheModal';
 import FiltroModal from '../components/FiltroModal';
 import ModalPagarFatura from '../components/ModalPagarFatura';
+import ConfirmarExclusao from '../components/ConfirmarExclusao';
 
 const filtroInicial = { tipos: [], situacao: [], contaIds: [], cartaoIds: [], categorias: [], periodo: 'Mês atual', busca: '' };
 
@@ -63,6 +64,7 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
   const [detalhe, setDetalhe] = useState(null);
   const [filtroAberto, setFiltroAberto] = useState(false);
   const [faturaParaPagar, setFaturaParaPagar] = useState(null);
+  const [excluirItem, setExcluirItem] = useState(null); // lançamento a excluir
   const [filtros, setFiltros] = useState(
     filtroVindoDaHome ? { ...filtroInicial, ...filtroVindoDaHome } : filtroInicial
   );
@@ -363,9 +365,17 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
                 { icone: l.pago ? '👎' : '👍', label: l.pago ? 'Desfazer' : 'Pago', cor: l.pago ? '#6b7280' : '#16a34a', onClick: () => setFaturaParaPagar(l) },
               ];
               const acoesLanc = [
-                { icone: '👍', label: l.pago ? 'Desfazer' : 'Pago', cor: l.pago ? '#6b7280' : '#16a34a', onClick: () => { if (l._fixoMesAno) togglePagoFixo(l.id, l._fixoMesAno); else togglePago(l.id); } },
+                {
+                  icone: l.pago ? '👎' : '👍',
+                  label: l.pago ? 'Não pago' : 'Pago',
+                  cor: l.pago ? '#6b7280' : '#16a34a',
+                  onClick: () => {
+                    if (l._fixoMesAno) togglePagoFixo(l.id, l._fixoMesAno);
+                    else togglePago(l.id);
+                  }
+                },
                 { icone: '✏️', label: 'Editar', cor: '#374151', onClick: () => abrirEditar(l) },
-                { icone: '🗑️', label: 'Excluir', cor: '#dc2626', onClick: () => { if (window.confirm('Excluir lançamento?')) { if (l.parcelado && l.grupoId) setDetalhe(l); else removerLancamento(l.id); } } },
+                { icone: '🗑️', label: 'Excluir', cor: '#dc2626', onClick: () => setExcluirItem(l) },
               ];
               return (
                 <SwipeableCard key={l.id} acoes={l._isFatura ? acoesFatura : acoesLanc}>
@@ -410,6 +420,20 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
       }} />}
       {filtroAberto && <FiltroModal filtros={filtros} onAplicar={setFiltros} onFechar={() => setFiltroAberto(false)} />}
       {faturaParaPagar && <ModalPagarFatura fatura={faturaParaPagar} onFechar={() => setFaturaParaPagar(null)} />}
+      {excluirItem && (
+        <ConfirmarExclusao
+          mensagem={excluirItem.parcelado ? `Parcela ${excluirItem.parcela}/${excluirItem.totalParcelas} — deseja excluir só esta ou todas as futuras?` : 'Esta ação não pode ser desfeita.'}
+          onCancelar={() => setExcluirItem(null)}
+          onConfirmar={() => {
+            if (excluirItem.parcelado && excluirItem.grupoId) {
+              setDetalhe(excluirItem); // abre DetalheModal para escolher parcelas
+            } else {
+              removerLancamento(excluirItem.id);
+            }
+            setExcluirItem(null);
+          }}
+        />
+      )}
     </div>
   );
 }
