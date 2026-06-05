@@ -69,26 +69,32 @@ export function AppProvider({ children }) {
   const [driveStatus, setDriveStatus] = useState('iniciando'); // iniciando = verifica token salvo
   const [autenticado, setAutenticado] = useState(!!localStorage.getItem('fin_binho_token')); // iniciando | desconectado | sincronizando | salvando | conectado | erro
   const saveTimer = useRef(null);
+  const salvandoLocal = useRef(false);
 
-  // Salva no localStorage sempre
+  // Salva no localStorage sempre + Drive com debounce
   useEffect(() => {
     localStorage.setItem('financeiro-app-dados', JSON.stringify(dados));
-    // Salva no Drive com debounce de 2s (evita salvar a cada tecla)
     if (isSignedIn()) {
+      salvandoLocal.current = true;
       clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(() => saveToDrive(dados), 2000);
+      saveTimer.current = setTimeout(async () => {
+        await saveToDrive(dados);
+        salvandoLocal.current = false;
+      }, 1500);
     }
   }, [dados]);
 
-  // Inicializa Google Drive — tenta restaurar sessão automaticamente
+  // Inicializa Google Drive — carrega dados só na abertura inicial
   useEffect(() => {
     const timer = setTimeout(async () => {
       try {
         await initGoogleDrive(
           (status) => setDriveStatus(status),
-          // Callback quando dados são carregados do Drive
           (dadosDrive) => {
-            if (dadosDrive) setDados(dadosDrive);
+            // Só aplica dados do Drive se não há alterações locais pendentes
+            if (dadosDrive && !salvandoLocal.current) {
+              setDados(dadosDrive);
+            }
           }
         );
       } catch {
@@ -97,27 +103,7 @@ export function AppProvider({ children }) {
     }, 1000);
     return () => clearTimeout(timer);
   }, []);
-
-  // Sincroniza ao voltar para o app (ex: iPhone vindo do background)
-  useEffect(() => {
-    async function aoFocar() {
-      if (isSignedIn()) {
-        setDriveStatus('sincronizando');
-        try {
-          const dadosDrive = await loadFromDrive();
-          if (dadosDrive) setDados(dadosDrive);
-          setDriveStatus('conectado');
-        } catch { setDriveStatus('conectado'); }
-      }
-    }
-    window.addEventListener('focus', aoFocar);
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') aoFocar();
-    });
-    return () => {
-      window.removeEventListener('focus', aoFocar);
-    };
-  }, []);
+  // Removido: sync automático ao focar (causava sumir lançamentos recentes)
 
   function conectarDrive() {
     setDriveStatus('sincronizando');
