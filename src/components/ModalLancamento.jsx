@@ -44,7 +44,6 @@ export default function ModalLancamento({ editando, onFechar, cartaoPreSeleciona
   function salvar() {
     // Fix 1: Validação com campos em vermelho
     const novosErros = {};
-    if (valorCentavos === 0) novosErros.valor = true;
     if (!form.descricao.trim()) novosErros.descricao = true;
     if (Object.keys(novosErros).length > 0) { setErros(novosErros); return; }
     setErros({});
