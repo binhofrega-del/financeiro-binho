@@ -3,6 +3,7 @@ import { Plus, ChevronLeft, ChevronRight, Check, Repeat, Layers, MoreVertical } 
 import { useApp } from '../context/AppContext';
 import { formatarMoeda, nomeMes, emojisCategoria } from '../utils/formatters';
 import IconeBanco from '../components/IconeBanco';
+import SwipeableCard from '../components/SwipeableCard';
 import ModalLancamento from '../components/ModalLancamento';
 import DetalheModal from '../components/DetalheModal';
 import FiltroModal from '../components/FiltroModal';
@@ -54,7 +55,7 @@ function calcularIntervalo(filtros, mesAtual, anoAtual) {
 }
 
 export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
-  const { lancamentos, cartoes, saldoGeral, saldoInicialTotal, togglePago, togglePagoFixo, toggleFaturaPaga } = useApp();
+  const { lancamentos, cartoes, saldoGeral, saldoInicialTotal, togglePago, togglePagoFixo, toggleFaturaPaga, removerLancamento } = useApp();
   const [mesAtual, setMesAtual] = useState(new Date().getMonth());
   const [anoAtual, setAnoAtual] = useState(new Date().getFullYear());
   const [modalAberto, setModalAberto] = useState(false);
@@ -357,9 +358,21 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
             <div style={{ fontSize: 12, fontWeight: 700, color: '#888', padding: '14px 0 6px', textTransform: 'uppercase', letterSpacing: 0.5 }}>
               {formatarDiaHeader(data)}
             </div>
-            {items.map(l => (
-              <CardLancamento key={l.id} lanc={l} onClick={() => l._isFatura ? setFaturaParaPagar(l) : setDetalhe(l)} />
-            ))}
+            {items.map(l => {
+              const acoesFatura = [
+                { icone: l.pago ? '👎' : '👍', label: l.pago ? 'Desfazer' : 'Pago', cor: l.pago ? '#6b7280' : '#16a34a', onClick: () => setFaturaParaPagar(l) },
+              ];
+              const acoesLanc = [
+                { icone: '👍', label: l.pago ? 'Desfazer' : 'Pago', cor: l.pago ? '#6b7280' : '#16a34a', onClick: () => { if (l._fixoMesAno) togglePagoFixo(l.id, l._fixoMesAno); else togglePago(l.id); } },
+                { icone: '✏️', label: 'Editar', cor: '#374151', onClick: () => abrirEditar(l) },
+                { icone: '🗑️', label: 'Excluir', cor: '#dc2626', onClick: () => { if (window.confirm('Excluir lançamento?')) { if (l.parcelado && l.grupoId) setDetalhe(l); else removerLancamento(l.id); } } },
+              ];
+              return (
+                <SwipeableCard key={l.id} acoes={l._isFatura ? acoesFatura : acoesLanc}>
+                  <CardLancamento lanc={l} onClick={() => l._isFatura ? setFaturaParaPagar(l) : setDetalhe(l)} />
+                </SwipeableCard>
+              );
+            })}
           </div>
         ))}
       </div>

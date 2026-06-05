@@ -4,9 +4,10 @@ import { useApp } from '../context/AppContext';
 import { formatarMoeda, nomeMes, emojisCategoria, logoParaBanco } from '../utils/formatters';
 import ModalLancamento from '../components/ModalLancamento';
 import DetalheModal from '../components/DetalheModal';
+import SwipeableCard from '../components/SwipeableCard';
 
 export default function CartoesScreen({ setAba }) {
-  const { cartoes, lancamentos } = useApp();
+  const { cartoes, lancamentos, removerLancamento } = useApp();
   const [cartaoIdx, setCartaoIdx] = useState(0);
   const [mesAtual, setMesAtual] = useState(new Date().getMonth());
   const [anoAtual, setAnoAtual] = useState(new Date().getFullYear());
@@ -212,8 +213,12 @@ export default function CartoesScreen({ setAba }) {
                   {formatarDiaHeader(data)}
                 </p>
                 {items.map(l => (
-                  <div key={l.id} onClick={() => setDetalhe(l)}
-                    style={{ background: 'white', borderRadius: 13, padding: '11px 13px', marginBottom: 7, display: 'flex', alignItems: 'center', gap: 11, boxShadow: '0 1px 4px rgba(0,0,0,0.05)', cursor: 'pointer' }}>
+                  <SwipeableCard key={l.id} acoes={[
+                    { icone: '✏️', label: 'Editar', cor: '#374151', onClick: () => abrirEditar(l) },
+                    { icone: '🗑️', label: 'Excluir', cor: '#dc2626', onClick: () => { if (window.confirm('Excluir lançamento?')) removerLancamento(l.id); } },
+                  ]}>
+                  <div onClick={() => setDetalhe(l)}
+                    style={{ background: 'white', borderRadius: 13, padding: '11px 13px', marginBottom: 0, display: 'flex', alignItems: 'center', gap: 11, boxShadow: '0 1px 4px rgba(0,0,0,0.05)', cursor: 'pointer' }}>
                     <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>
                       {emojisCategoria[l.categoria] || '📌'}
                     </div>
@@ -226,6 +231,7 @@ export default function CartoesScreen({ setAba }) {
                       <p style={{ fontSize: 10, color: '#16a34a', fontWeight: 600, marginTop: 1 }}>✓ Confirmado</p>
                     </div>
                   </div>
+                  </SwipeableCard>
                 ))}
               </div>
             ))}
