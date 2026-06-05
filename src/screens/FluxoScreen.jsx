@@ -7,6 +7,7 @@ import DetalheModal from '../components/DetalheModal';
 import FiltroModal from '../components/FiltroModal';
 import ModalPagarFatura from '../components/ModalPagarFatura';
 import IconeBanco from '../components/IconeBanco';
+import ModalEditarFixo from '../components/ModalEditarFixo';
 
 const filtroInicial = { tipos: [], situacao: [], contaIds: [], cartaoIds: [], categorias: [], periodo: 'mes', busca: '' };
 
@@ -84,6 +85,7 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
   const [detalhe, setDetalhe] = useState(null);
   const [filtroAberto, setFiltroAberto] = useState(false);
   const [faturaParaPagar, setFaturaParaPagar] = useState(null);
+  const [confirmarEditarFixo, setConfirmarEditarFixo] = useState(null);
   const [filtros, setFiltros] = useState(filtroVindoDaHome ? { ...filtroInicial, ...filtroVindoDaHome } : filtroInicial);
 
   const temFiltroAtivo = filtros.tipos.length > 0 || filtros.situacao.length > 0 ||
@@ -94,7 +96,18 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
   const mesAtual = new Date(dataRef+'T00:00:00').getMonth();
   const anoAtual = new Date(dataRef+'T00:00:00').getFullYear();
 
-  function abrirEditar(lanc) { setDetalhe(null); setEditando(lanc); setModalAberto(true); }
+  const { adicionarLancamento } = useApp();
+
+  function abrirEditar(lanc) {
+    setDetalhe(null);
+    // Se for fixo, pergunta antes de editar
+    if (lanc.fixo && !lanc._copia) {
+      setConfirmarEditarFixo(lanc);
+    } else {
+      setEditando(lanc);
+      setModalAberto(true);
+    }
+  }
   function fecharModal() { setModalAberto(false); setEditando(null); }
 
   const lancFiltrados = useMemo(() => {
@@ -347,6 +360,26 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
       }} />}
       {filtroAberto && <FiltroModal filtros={filtros} onAplicar={setFiltros} onFechar={() => setFiltroAberto(false)} />}
       {faturaParaPagar && <ModalPagarFatura fatura={faturaParaPagar} onFechar={() => setFaturaParaPagar(null)} />}
+
+      {confirmarEditarFixo && (
+        <ModalEditarFixo
+          lanc={confirmarEditarFixo}
+          onCancelar={() => setConfirmarEditarFixo(null)}
+          onSoEste={() => {
+            // Cria cópia não-fixa para este mês específico
+            const { id, fixo, pagoPorMes, ...resto } = confirmarEditarFixo;
+            setConfirmarEditarFixo(null);
+            setEditando({ ...resto, fixo: false, _copia: true });
+            setModalAberto(true);
+          }}
+          onTodosProximos={() => {
+            // Edita o lançamento original (fixo)
+            setConfirmarEditarFixo(null);
+            setEditando(confirmarEditarFixo);
+            setModalAberto(true);
+          }}
+        />
+      )}
     </div>
   );
 }
