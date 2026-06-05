@@ -452,7 +452,7 @@ function CardLancamento({ lanc, onClick }) {
       : null;
 
     return (
-      <div onClick={onClick} style={{ background: 'white', borderRadius: 14, padding: '12px 14px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 12, boxShadow: '0 1px 4px rgba(0,0,0,0.06)', opacity: lanc.pago ? 0.6 : 1, cursor: 'pointer', userSelect: 'none', borderLeft: `4px solid ${lanc._cartaoCor || '#7c3aed'}` }}>
+      <div onClick={onClick} style={{ background: 'white', borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12, opacity: lanc.pago ? 0.6 : 1, cursor: 'pointer', userSelect: 'none', borderLeft: `4px solid ${lanc._cartaoCor || '#7c3aed'}` }}>
         <div style={{ width: 42, height: 42, borderRadius: '50%', background: '#ede9fe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>
           💳
         </div>
@@ -482,7 +482,7 @@ function CardLancamento({ lanc, onClick }) {
   }
 
   return (
-    <div onClick={onClick} style={{ background: 'white', borderRadius: 14, padding: '12px 14px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 12, boxShadow: '0 1px 4px rgba(0,0,0,0.06)', opacity: lanc.pago ? 0.6 : 1, cursor: 'pointer', userSelect: 'none' }}>
+    <div onClick={onClick} style={{ background: 'white', borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12, opacity: lanc.pago ? 0.6 : 1, cursor: 'pointer', userSelect: 'none' }}>
       <div style={{ width: 42, height: 42, borderRadius: '50%', background: bgIcon, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>
         {emoji}
       </div>
