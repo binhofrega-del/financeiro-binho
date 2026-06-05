@@ -104,11 +104,31 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
       .filter(l => !l.cartaoId && l.cartaoId !== 0)
       .map(l => {
         const d = new Date(l.data+'T00:00:00');
+        // Lançamento normal no período
         if (d >= inicio && d <= fim) return l;
+
+        // Fixo: só aparece fora do período em modo MÊS ou SEMANA
+        // Em modo DIA: só aparece se o dia do mês coincidir com o dia visualizado
         if (l.fixo && d <= fim) {
+          const diaOriginal = parseInt(l.data.slice(8,10));
+          if (modo === 'dia') {
+            const diaRef = inicio.getDate();
+            // Só mostra se o dia do fixo bate com o dia visualizado E o mês/ano é posterior à criação
+            if (diaOriginal !== diaRef) return null;
+            const dataNoMes = `${anoAtual}-${String(mesAtual+1).padStart(2,'0')}-${String(diaOriginal).padStart(2,'0')}`;
+            const pagoMes = (l.pagoPorMes||{})[mesAno] ?? false;
+            return { ...l, data: dataNoMes, pago: pagoMes, _fixoMesAno: mesAno };
+          }
+          if (modo === 'semana') {
+            // Mostra se o dia do fixo cai dentro da semana visualizada
+            const dataNoMes = new Date(anoAtual, mesAtual, diaOriginal);
+            if (dataNoMes < inicio || dataNoMes > fim) return null;
+            const pagoMes = (l.pagoPorMes||{})[mesAno] ?? false;
+            return { ...l, data: `${anoAtual}-${String(mesAtual+1).padStart(2,'0')}-${String(diaOriginal).padStart(2,'0')}`, pago: pagoMes, _fixoMesAno: mesAno };
+          }
+          // Modo mês e personalizado: comportamento original
           const pagoMes = (l.pagoPorMes||{})[mesAno] ?? false;
-          const diaOriginal = l.data.slice(8,10);
-          const dataNoMes = `${anoAtual}-${String(mesAtual+1).padStart(2,'0')}-${diaOriginal}`;
+          const dataNoMes = `${anoAtual}-${String(mesAtual+1).padStart(2,'0')}-${String(diaOriginal).padStart(2,'0')}`;
           return { ...l, data: dataNoMes, pago: pagoMes, _fixoMesAno: mesAno };
         }
         return null;
