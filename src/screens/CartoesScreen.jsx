@@ -218,7 +218,7 @@ export default function CartoesScreen({ setAba }) {
                     { icone: '🗑️', label: 'Excluir', cor: '#dc2626', onClick: () => { if (window.confirm('Excluir lançamento?')) removerLancamento(l.id); } },
                   ]}>
                   <div onClick={() => setDetalhe(l)}
-                    style={{ background: 'white', borderRadius: 13, padding: '11px 13px', marginBottom: 0, display: 'flex', alignItems: 'center', gap: 11, boxShadow: '0 1px 4px rgba(0,0,0,0.05)', cursor: 'pointer' }}>
+                    style={{ background: 'white', borderRadius: 13, padding: '11px 13px', display: 'flex', alignItems: 'center', gap: 11, cursor: 'pointer' }}>
                     <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>
                       {emojisCategoria[l.categoria] || '📌'}
                     </div>
