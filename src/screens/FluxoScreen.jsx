@@ -189,9 +189,24 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
     return s;
   }, [saldoGeral, cartoes, lancamentos]);
   const saldoPrevCumulativo = useMemo(() => {
-    const fim = new Date(anoAtual,mesAtual+1,0,23,59,59);
-    const transacoes = lancamentos.reduce((acc,l) => { const d=new Date(l.data+'T00:00:00'); if(d>fim) return acc; const v=l.tipo==='receita'?Math.abs(l.valor):-Math.abs(l.valor); if(l.fixo){const mp=(anoAtual-d.getFullYear())*12+(mesAtual-d.getMonth())+1; return acc+v*Math.max(mp,1);} return acc+v; },0);
-    return saldoInicialTotal + transacoes;
+    // Sempre usa o mês atual real para o acumulado (independente do modo de visualização)
+    const hoje = new Date();
+    const anoBase = hoje.getFullYear();
+    const mesBase = hoje.getMonth();
+    const fim = new Date(anoBase, mesBase+1, 0, 23, 59, 59);
+    const transacoes = lancamentos.reduce((acc,l) => {
+      try {
+        const d = new Date(l.data+'T00:00:00');
+        if (!d || isNaN(d.getTime()) || d > fim) return acc;
+        const v = l.tipo==='receita' ? Math.abs(l.valor||0) : -Math.abs(l.valor||0);
+        if (l.fixo) {
+          const mp = (anoBase - d.getFullYear())*12 + (mesBase - d.getMonth()) + 1;
+          return acc + v * Math.max(mp, 1);
+        }
+        return acc + v;
+      } catch { return acc; }
+    }, 0);
+    return (saldoInicialTotal||0) + transacoes;
   }, [lancamentos, mesAtual, anoAtual, saldoInicialTotal]);
 
   const porDia = useMemo(() => {
