@@ -92,9 +92,10 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
     filtros.contaIds.length > 0 || filtros.cartaoIds.length > 0 ||
     filtros.categorias.length > 0 || filtros.busca;
 
-  // Compatibilidade com filtroVindoDaHome (conta filter)
-  const mesAtual = new Date(dataRef+'T00:00:00').getMonth();
-  const anoAtual = new Date(dataRef+'T00:00:00').getFullYear();
+  // Para modo personalizado, dataRef é 'ini|fim' — usa só a data inicial
+  const dataRefBase = modo === 'personalizado' ? dataRef.split('|')[0] : dataRef;
+  const mesAtual = new Date(dataRefBase+'T00:00:00').getMonth();
+  const anoAtual = new Date(dataRefBase+'T00:00:00').getFullYear();
 
   const { adicionarLancamento } = useApp();
 
@@ -139,7 +140,14 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
             const pagoMes = (l.pagoPorMes||{})[mesAno] ?? false;
             return { ...l, data: `${anoAtual}-${String(mesAtual+1).padStart(2,'0')}-${String(diaOriginal).padStart(2,'0')}`, pago: pagoMes, _fixoMesAno: mesAno };
           }
-          // Modo mês e personalizado: comportamento original
+          if (modo === 'personalizado') {
+            // Personalizado: só mostra se o dia do fixo cai dentro do range escolhido
+            const dataNoRange = new Date(anoAtual, mesAtual, diaOriginal);
+            if (dataNoRange < inicio || dataNoRange > fim) return null;
+            const pagoMes = (l.pagoPorMes||{})[mesAno] ?? false;
+            return { ...l, data: `${anoAtual}-${String(mesAtual+1).padStart(2,'0')}-${String(diaOriginal).padStart(2,'0')}`, pago: pagoMes, _fixoMesAno: mesAno };
+          }
+          // Modo mês: comportamento original (aparece no mês inteiro)
           const pagoMes = (l.pagoPorMes||{})[mesAno] ?? false;
           const dataNoMes = `${anoAtual}-${String(mesAtual+1).padStart(2,'0')}-${String(diaOriginal).padStart(2,'0')}`;
           return { ...l, data: dataNoMes, pago: pagoMes, _fixoMesAno: mesAno };
@@ -255,10 +263,15 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
   }, [lancFiltrados, faturasMes, filtros.busca]);
 
   function formatarDiaHeader(dataStr) {
-    const [ano,mes,dia] = dataStr.split('-');
-    const d = new Date(parseInt(ano),parseInt(mes)-1,parseInt(dia));
-    const dias=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
-    return `${parseInt(dia)} de ${nomeMes(parseInt(mes)-1)} · ${dias[d.getDay()]}`;
+    try {
+      const [ano,mes,dia] = dataStr.split('-');
+      const anoN = parseInt(ano), mesN = parseInt(mes), diaN = parseInt(dia);
+      if (!anoN || !mesN || !diaN) return dataStr;
+      const d = new Date(anoN, mesN-1, diaN);
+      if (isNaN(d.getTime())) return dataStr;
+      const dias=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+      return `${diaN} de ${nomeMes(mesN-1)} · ${dias[d.getDay()]}`;
+    } catch { return dataStr; }
   }
 
   return (
