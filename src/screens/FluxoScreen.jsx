@@ -168,22 +168,44 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
   }, [lancamentos, modo, dataRef, filtros]);
 
   const faturasMes = useMemo(() => {
-    const mesAno = `${anoAtual}-${String(mesAtual+1).padStart(2,'0')}`;
-    const inicioMes = new Date(anoAtual,mesAtual,1);
-    const fimMes = new Date(anoAtual,mesAtual+1,0,23,59,59);
+    // A fatura que VENCE neste mês é a do mês ANTERIOR (fechou no mês passado, vence agora)
+    const mesFatura = mesAtual === 0 ? 11 : mesAtual - 1;
+    const anoFatura = mesAtual === 0 ? anoAtual - 1 : anoAtual;
+    const mesAnoFatura = `${anoFatura}-${String(mesFatura+1).padStart(2,'0')}`;
+    // Chave de pagamento usa o mês do VENCIMENTO (mês atual)
+    const mesAnoVenc = `${anoAtual}-${String(mesAtual+1).padStart(2,'0')}`;
+    const inicioFatura = new Date(anoFatura,mesFatura,1);
+    const fimFatura = new Date(anoFatura,mesFatura+1,0,23,59,59);
+
     return cartoes.map(cartao => {
       const totalFatura = lancamentos.filter(l => {
         if (l.cartaoId !== cartao.id || l.tipo !== 'despesa') return false;
+        // Novo: usa faturaMes/faturaAno
+        if (l.faturaMes != null) return l.faturaMes === mesFatura && l.faturaAno === anoFatura;
+        // Legado: usa data do lançamento
         const d = new Date(l.data+'T00:00:00');
-        return (d >= inicioMes && d <= fimMes) || (l.fixo && d <= fimMes);
+        return (d >= inicioFatura && d <= fimFatura) || (l.fixo && d <= fimFatura);
       }).reduce((acc,l) => acc + Math.abs(l.valor), 0);
+
       if (totalFatura === 0) return null;
+
+      // Data da fatura = dia do vencimento no mês ATUAL (quando o dinheiro sai)
       const diaVenc = String(cartao.diaVencimento).padStart(2,'0');
       const dataFatura = `${anoAtual}-${String(mesAtual+1).padStart(2,'0')}-${diaVenc}`;
-      const fp = (cartao.faturasPagas||{})[mesAno];
+      const fp = (cartao.faturasPagas||{})[mesAnoVenc];
       const estaPago = typeof fp==='object' ? fp?.pago : !!fp;
       const contaIdPagamento = typeof fp==='object' ? fp?.contaId : null;
-      return { id:`fatura-${cartao.id}-${mesAno}`, descricao:`Fatura ${nomeMes(mesAtual)} ${anoAtual}`, valor:-totalFatura, data:dataFatura, tipo:'despesa', categoria:'Fatura Cartão', cartaoId:cartao.id, contaId:null, pago:estaPago, _isFatura:true, _cartaoNome:cartao.nome, _cartaoBanco:cartao.banco, _cartaoCor:cartao.cor, _mesAno:mesAno, _contaIdPagamento:contaIdPagamento };
+
+      return {
+        id: `fatura-${cartao.id}-${mesAnoVenc}`,
+        descricao: `Fatura ${nomeMes(mesFatura)} ${anoFatura}`,
+        valor: -totalFatura, data: dataFatura,
+        tipo: 'despesa', categoria: 'Fatura Cartão',
+        cartaoId: cartao.id, contaId: null,
+        pago: estaPago, _isFatura: true,
+        _cartaoNome: cartao.nome, _cartaoBanco: cartao.banco, _cartaoCor: cartao.cor,
+        _mesAno: mesAnoVenc, _contaIdPagamento: contaIdPagamento,
+      };
     }).filter(Boolean);
   }, [cartoes, lancamentos, mesAtual, anoAtual]);
 

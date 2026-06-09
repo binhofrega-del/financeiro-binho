@@ -16,19 +16,18 @@ export default function HomeScreen({ setAba, irParaFluxo }) {
   const hora = agora.getHours();
   const saudacao = hora >= 5 && hora < 12 ? 'Bom dia' : hora >= 12 && hora < 18 ? 'Boa tarde' : 'Boa noite';
 
-  // Fatura do cartão no mês atual (inclui fixos recorrentes)
+  // Fatura do cartão = compras do mês ANTERIOR (que vencem este mês)
   function faturaCartao(cartaoId) {
-    const inicioMes = new Date(anoAtual, mesAtual, 1);
-    const fimMes = new Date(anoAtual, mesAtual + 1, 0, 23, 59, 59);
+    const mesFatura = mesAtual === 0 ? 11 : mesAtual - 1;
+    const anoFatura = mesAtual === 0 ? anoAtual - 1 : anoAtual;
+    const inicioFatura = new Date(anoFatura, mesFatura, 1);
+    const fimFatura = new Date(anoFatura, mesFatura + 1, 0, 23, 59, 59);
     return lancamentos
       .filter(l => {
         if (l.cartaoId !== cartaoId || l.tipo !== 'despesa') return false;
+        if (l.faturaMes != null) return l.faturaMes === mesFatura && l.faturaAno === anoFatura;
         const d = new Date(l.data + 'T00:00:00');
-        // Normal: no mês exato
-        if (d >= inicioMes && d <= fimMes) return true;
-        // Fixo: a partir do mês de criação
-        if (l.fixo && d <= fimMes) return true;
-        return false;
+        return (d >= inicioFatura && d <= fimFatura) || (l.fixo && d <= fimFatura);
       })
       .reduce((a, l) => a + Math.abs(l.valor), 0);
   }
