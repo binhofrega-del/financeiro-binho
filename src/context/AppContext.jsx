@@ -71,19 +71,17 @@ export function AppProvider({ children }) {
   const saveTimer = useRef(null);
   const salvandoLocal = useRef(false);
 
-  // Salva no localStorage SEMPRE (backup local) + Drive com debounce
+  // Salva no localStorage SEMPRE + Drive imediatamente (sem debounce longo)
   useEffect(() => {
-    // Salva com timestamp para saber qual é mais recente
-    const backup = { dados, savedAt: new Date().toISOString() };
     localStorage.setItem('financeiro-app-dados', JSON.stringify(dados));
-    localStorage.setItem('financeiro-app-backup', JSON.stringify(backup));
     if (isSignedIn()) {
       salvandoLocal.current = true;
       clearTimeout(saveTimer.current);
+      // Salva rápido: 800ms (garante que exclusões chegam ao Drive antes de abrir outro dispositivo)
       saveTimer.current = setTimeout(async () => {
         await saveToDrive(dados);
         salvandoLocal.current = false;
-      }, 1500);
+      }, 800);
     }
   }, [dados]);
 
@@ -94,21 +92,9 @@ export function AppProvider({ children }) {
         await initGoogleDrive(
           (status) => setDriveStatus(status),
           (dadosDrive) => {
+            // Drive é sempre a fonte da verdade ao carregar
+            // Só ignora se estiver salvando alterações locais neste momento
             if (!dadosDrive || salvandoLocal.current) return;
-            // Compara com backup local — usa o mais recente
-            try {
-              const backupRaw = localStorage.getItem('financeiro-app-backup');
-              if (backupRaw) {
-                const backup = JSON.parse(backupRaw);
-                const localTime = new Date(backup.savedAt).getTime();
-                const driveTime = new Date(dadosDrive.savedAt || 0).getTime();
-                // Se local é mais recente que drive, mantém local e sobe para drive
-                if (localTime > driveTime && backup.dados?.lancamentos?.length >= (dadosDrive.lancamentos?.length || 0)) {
-                  saveToDrive(backup.dados);
-                  return;
-                }
-              }
-            } catch {}
             setDados(dadosDrive);
           }
         );
