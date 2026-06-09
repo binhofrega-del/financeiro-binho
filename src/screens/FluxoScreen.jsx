@@ -245,10 +245,12 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
   }, [lancamentos, mesAtual, anoAtual, saldoInicialTotal]);
 
   const porDia = useMemo(() => {
+    // Faturas só aparecem quando NÃO há busca por texto ativa
+    const faturas = filtros.busca ? [] : faturasMes;
     const grupos = {};
-    [...lancFiltrados, ...faturasMes].forEach(l => { if(!grupos[l.data]) grupos[l.data]=[]; grupos[l.data].push(l); });
+    [...lancFiltrados, ...faturas].forEach(l => { if(!grupos[l.data]) grupos[l.data]=[]; grupos[l.data].push(l); });
     return Object.entries(grupos).sort(([a],[b]) => a.localeCompare(b));
-  }, [lancFiltrados, faturasMes]);
+  }, [lancFiltrados, faturasMes, filtros.busca]);
 
   function formatarDiaHeader(dataStr) {
     const [ano,mes,dia] = dataStr.split('-');
