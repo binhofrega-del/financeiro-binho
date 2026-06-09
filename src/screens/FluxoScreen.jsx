@@ -358,19 +358,45 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
         ))}
       </div>
 
-      <div style={{ background:'white', borderTop:'1px solid #e5e7eb', padding:'10px 14px 6px' }}>
-        <div style={{ display:'flex', marginBottom:6 }}>
-          <DemoCol valor={entradasReais} label="entradas" cor="#16a34a" sinal="+" />
-          <DemoCol valor={saidasReais} label="saídas" cor="#dc2626" sinal="-" />
-          <DemoCol valor={saldoRealCumulativo} label="saldo" cor={saldoRealCumulativo>=0?'#1d4ed8':'#dc2626'} />
+      {/* Demonstrativo: quando filtro ativo mostra totais do filtro, senão mostra real/previsto */}
+      {temFiltroAtivo ? (
+        <div style={{ background:'white', borderTop:'1px solid #e5e7eb', padding:'12px 16px 10px' }}>
+          <p style={{ fontSize:12, fontWeight:700, color:'#888', textAlign:'center', marginBottom:10, textTransform:'uppercase', letterSpacing:0.5 }}>
+            Filtro total
+          </p>
+          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+              <span style={{ fontSize:13, color:'#666' }}>Total receitas</span>
+              <span style={{ fontSize:14, fontWeight:700, color:'#16a34a' }}>+{formatarMoeda(entradasPrev)}</span>
+            </div>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+              <span style={{ fontSize:13, color:'#666' }}>Total despesas</span>
+              <span style={{ fontSize:14, fontWeight:700, color:'#dc2626' }}>-{formatarMoeda(saidasPrev)}</span>
+            </div>
+            <div style={{ height:1, background:'#f3f4f6', margin:'2px 0' }} />
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+              <span style={{ fontSize:13, fontWeight:700, color:'#111' }}>Total</span>
+              <span style={{ fontSize:15, fontWeight:800, color: (entradasPrev-saidasPrev)>=0?'#1d4ed8':'#dc2626' }}>
+                {formatarMoeda(entradasPrev - saidasPrev)}
+              </span>
+            </div>
+          </div>
         </div>
-        <div style={{ height:1, background:'#f3f4f6', marginBottom:6 }} />
-        <div style={{ display:'flex' }}>
-          <DemoCol valor={entradasPrev} label="previsto" cor="#16a34a" pequeno />
-          <DemoCol valor={saidasPrev} label="previsto" cor="#dc2626" sinal="-" pequeno />
-          <DemoCol valor={saldoPrevCumulativo} label="previsto acum." cor={saldoPrevCumulativo>=0?'#1d4ed8':'#dc2626'} sinal={saldoPrevCumulativo<0?'-':''} pequeno />
+      ) : (
+        <div style={{ background:'white', borderTop:'1px solid #e5e7eb', padding:'10px 14px 6px' }}>
+          <div style={{ display:'flex', marginBottom:6 }}>
+            <DemoCol valor={entradasReais} label="entradas" cor="#16a34a" sinal="+" />
+            <DemoCol valor={saidasReais} label="saídas" cor="#dc2626" sinal="-" />
+            <DemoCol valor={saldoRealCumulativo} label="saldo" cor={saldoRealCumulativo>=0?'#1d4ed8':'#dc2626'} />
+          </div>
+          <div style={{ height:1, background:'#f3f4f6', marginBottom:6 }} />
+          <div style={{ display:'flex' }}>
+            <DemoCol valor={entradasPrev} label="previsto" cor="#16a34a" pequeno />
+            <DemoCol valor={saidasPrev} label="previsto" cor="#dc2626" sinal="-" pequeno />
+            <DemoCol valor={saldoPrevCumulativo} label="previsto acum." cor={saldoPrevCumulativo>=0?'#1d4ed8':'#dc2626'} sinal={saldoPrevCumulativo<0?'-':''} pequeno />
+          </div>
         </div>
-      </div>
+      )}
 
       <button onClick={() => setModalAberto(true)} style={fab}><Plus size={28} color="white" /></button>
 
