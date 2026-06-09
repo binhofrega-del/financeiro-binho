@@ -14,6 +14,19 @@ const filtroInicial = { tipos: [], situacao: [], contaIds: [], cartaoIds: [], ca
 function toStr(d) { return d.toISOString().slice(0,10); }
 function addDias(d, n) { const r=new Date(d); r.setDate(r.getDate()+n); return r; }
 
+// Retorna o dia correto de um lançamento fixo no mês alvo
+// Se foi criado no último dia do mês, usa último dia do mês alvo
+function diaFixoNoMes(dataOriginal, anoTarget, mesTarget) {
+  const d = new Date(dataOriginal+'T00:00:00');
+  const diaOrig = d.getDate();
+  const ultimoOrig = new Date(d.getFullYear(), d.getMonth()+1, 0).getDate();
+  if (diaOrig === ultimoOrig) {
+    // Era último dia → usar último dia do mês alvo
+    return new Date(anoTarget, mesTarget+1, 0).getDate();
+  }
+  return diaOrig;
+}
+
 // Calcula início/fim baseado no modo de período e data de referência
 function calcularIntervalo(modo, dataRef) {
   const d = new Date(dataRef+'T00:00:00');
@@ -97,7 +110,7 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
   const mesAtual = new Date(dataRefBase+'T00:00:00').getMonth();
   const anoAtual = new Date(dataRefBase+'T00:00:00').getFullYear();
 
-  const { adicionarLancamento, adicionarExcecaoFixo } = useApp();
+  const { adicionarLancamento, adicionarExcecaoFixo, limparExcecoesFixo } = useApp();
 
   function abrirEditar(lanc) {
     setDetalhe(null);
@@ -127,31 +140,29 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
           // Pula meses de exceção (alterados individualmente)
           if ((l.excecoesMeses||[]).includes(mesAno)) return null;
           const diaOriginal = parseInt(l.data.slice(8,10));
+          // Calcula o dia correto no mês alvo (respeitando último dia do mês)
+          const diaAlvo = diaFixoNoMes(l.data, anoAtual, mesAtual);
+          const dataNoMes = `${anoAtual}-${String(mesAtual+1).padStart(2,'0')}-${String(diaAlvo).padStart(2,'0')}`;
+
           if (modo === 'dia') {
-            const diaRef = inicio.getDate();
-            // Só mostra se o dia do fixo bate com o dia visualizado E o mês/ano é posterior à criação
-            if (diaOriginal !== diaRef) return null;
-            const dataNoMes = `${anoAtual}-${String(mesAtual+1).padStart(2,'0')}-${String(diaOriginal).padStart(2,'0')}`;
+            if (diaAlvo !== inicio.getDate()) return null;
             const pagoMes = (l.pagoPorMes||{})[mesAno] ?? false;
             return { ...l, data: dataNoMes, pago: pagoMes, _fixoMesAno: mesAno };
           }
           if (modo === 'semana') {
-            // Mostra se o dia do fixo cai dentro da semana visualizada
-            const dataNoMes = new Date(anoAtual, mesAtual, diaOriginal);
-            if (dataNoMes < inicio || dataNoMes > fim) return null;
+            const dataNoMesDate = new Date(anoAtual, mesAtual, diaAlvo);
+            if (dataNoMesDate < inicio || dataNoMesDate > fim) return null;
             const pagoMes = (l.pagoPorMes||{})[mesAno] ?? false;
-            return { ...l, data: `${anoAtual}-${String(mesAtual+1).padStart(2,'0')}-${String(diaOriginal).padStart(2,'0')}`, pago: pagoMes, _fixoMesAno: mesAno };
+            return { ...l, data: dataNoMes, pago: pagoMes, _fixoMesAno: mesAno };
           }
           if (modo === 'personalizado') {
-            // Personalizado: só mostra se o dia do fixo cai dentro do range escolhido
-            const dataNoRange = new Date(anoAtual, mesAtual, diaOriginal);
-            if (dataNoRange < inicio || dataNoRange > fim) return null;
+            const dataNoMesDate = new Date(anoAtual, mesAtual, diaAlvo);
+            if (dataNoMesDate < inicio || dataNoMesDate > fim) return null;
             const pagoMes = (l.pagoPorMes||{})[mesAno] ?? false;
-            return { ...l, data: `${anoAtual}-${String(mesAtual+1).padStart(2,'0')}-${String(diaOriginal).padStart(2,'0')}`, pago: pagoMes, _fixoMesAno: mesAno };
+            return { ...l, data: dataNoMes, pago: pagoMes, _fixoMesAno: mesAno };
           }
-          // Modo mês: comportamento original (aparece no mês inteiro)
+          // Modo mês
           const pagoMes = (l.pagoPorMes||{})[mesAno] ?? false;
-          const dataNoMes = `${anoAtual}-${String(mesAtual+1).padStart(2,'0')}-${String(diaOriginal).padStart(2,'0')}`;
           return { ...l, data: dataNoMes, pago: pagoMes, _fixoMesAno: mesAno };
         }
         return null;
@@ -437,14 +448,16 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
             const mesAno = confirmarEditarFixo._fixoMesAno ||
               `${anoAtual}-${String(mesAtual+1).padStart(2,'0')}`;
             adicionarExcecaoFixo(confirmarEditarFixo.id, mesAno);
-            // Abre modal para editar — vai criar entrada única (sem id = nova, sem fixo)
-            const { id, fixo, pagoPorMes, excecoesMeses, _fixoMesAno, ...resto } = confirmarEditarFixo;
+            // Abre modal para editar — cria entrada única para este mês
+            const { id: origId, fixo, pagoPorMes, excecoesMeses, _fixoMesAno, ...resto } = confirmarEditarFixo;
             setConfirmarEditarFixo(null);
-            setEditando({ ...resto, fixo: false, _copia: true, data: confirmarEditarFixo.data });
+            // _excecaoDeId vincula a entrada de exceção ao fixo original (para limpeza posterior)
+            setEditando({ ...resto, fixo: false, _copia: true, _excecaoDeId: origId, data: confirmarEditarFixo.data });
             setModalAberto(true);
           }}
           onTodosProximos={() => {
-            // Edita o lançamento original (fixo)
+            // Limpa exceções anteriores e edita o fixo original
+            limparExcecoesFixo(confirmarEditarFixo.id);
             setConfirmarEditarFixo(null);
             setEditando(confirmarEditarFixo);
             setModalAberto(true);
