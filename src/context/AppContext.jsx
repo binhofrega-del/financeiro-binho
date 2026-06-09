@@ -236,6 +236,16 @@ export function AppProvider({ children }) {
     }));
   }
 
+  // Para o fixo num mês específico (não mostrar a partir desse mês)
+  function pararFixoNoMes(id, dataParar) {
+    setDados(d => ({
+      ...d,
+      lancamentos: d.lancamentos.map(l =>
+        l.id === id ? { ...l, fixoFimData: dataParar } : l
+      ),
+    }));
+  }
+
   // Ao "Alterar todos os próximos": limpa exceções e remove entradas individuais vinculadas
   function limparExcecoesFixo(id) {
     setDados(d => ({
@@ -299,7 +309,7 @@ export function AppProvider({ children }) {
       adicionarCartao, editarCartao, removerCartao,
       saldoInicialTotal,
       driveStatus, autenticado, conectarDrive, desconectarDrive, sincronizarDrive,
-      adicionarExcecaoFixo, limparExcecoesFixo,
+      adicionarExcecaoFixo, limparExcecoesFixo, pararFixoNoMes,
       adicionarLancamento, adicionarVariosLancamentos, editarLancamento, removerLancamento, removerParcelasDoGrupo, togglePago, togglePagoFixo, toggleFaturaPaga, pagarFatura, desfazerFatura,
       adicionarCategoria,
     }}>
