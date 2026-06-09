@@ -97,7 +97,7 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
   const mesAtual = new Date(dataRefBase+'T00:00:00').getMonth();
   const anoAtual = new Date(dataRefBase+'T00:00:00').getFullYear();
 
-  const { adicionarLancamento } = useApp();
+  const { adicionarLancamento, adicionarExcecaoFixo } = useApp();
 
   function abrirEditar(lanc) {
     setDetalhe(null);
@@ -124,6 +124,8 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
         // Fixo: só aparece fora do período em modo MÊS ou SEMANA
         // Em modo DIA: só aparece se o dia do mês coincidir com o dia visualizado
         if (l.fixo && d <= fim) {
+          // Pula meses de exceção (alterados individualmente)
+          if ((l.excecoesMeses||[]).includes(mesAno)) return null;
           const diaOriginal = parseInt(l.data.slice(8,10));
           if (modo === 'dia') {
             const diaRef = inicio.getDate();
@@ -431,10 +433,14 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
           lanc={confirmarEditarFixo}
           onCancelar={() => setConfirmarEditarFixo(null)}
           onSoEste={() => {
-            // Cria cópia não-fixa para este mês específico
-            const { id, fixo, pagoPorMes, ...resto } = confirmarEditarFixo;
+            // Marca este mês como exceção no original (não mostrar mais este mês via fixo)
+            const mesAno = confirmarEditarFixo._fixoMesAno ||
+              `${anoAtual}-${String(mesAtual+1).padStart(2,'0')}`;
+            adicionarExcecaoFixo(confirmarEditarFixo.id, mesAno);
+            // Abre modal para editar — vai criar entrada única (sem id = nova, sem fixo)
+            const { id, fixo, pagoPorMes, excecoesMeses, _fixoMesAno, ...resto } = confirmarEditarFixo;
             setConfirmarEditarFixo(null);
-            setEditando({ ...resto, fixo: false, _copia: true });
+            setEditando({ ...resto, fixo: false, _copia: true, data: confirmarEditarFixo.data });
             setModalAberto(true);
           }}
           onTodosProximos={() => {

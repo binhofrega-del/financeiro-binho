@@ -224,6 +224,18 @@ export function AppProvider({ children }) {
     }));
   }
 
+  // Adiciona um mês como "exceção" no fixo (não mostrar naquele mês)
+  function adicionarExcecaoFixo(id, mesAno) {
+    setDados(d => ({
+      ...d,
+      lancamentos: d.lancamentos.map(l => {
+        if (l.id !== id) return l;
+        const excecoes = l.excecoesMeses || [];
+        return { ...l, excecoesMeses: [...excecoes, mesAno] };
+      }),
+    }));
+  }
+
   // Para despesas FIXAS: pago é independente por mês (ex: "2026-06")
   function togglePagoFixo(id, mesAno) {
     setDados(d => ({
@@ -274,6 +286,7 @@ export function AppProvider({ children }) {
       adicionarCartao, editarCartao, removerCartao,
       saldoInicialTotal,
       driveStatus, autenticado, conectarDrive, desconectarDrive, sincronizarDrive,
+      adicionarExcecaoFixo,
       adicionarLancamento, adicionarVariosLancamentos, editarLancamento, removerLancamento, removerParcelasDoGrupo, togglePago, togglePagoFixo, toggleFaturaPaga, pagarFatura, desfazerFatura,
       adicionarCategoria,
     }}>
