@@ -84,7 +84,7 @@ export default function ModalLancamento({ editando, onFechar, cartaoPreSeleciona
       ...(cartaoIdFinal ? { faturaMes: faturaSel.faturaMes, faturaAno: faturaSel.faturaAno } : {}),
     };
 
-    if (editando && editando.id && !editando._copia) {
+    if (editando && editando.id && !editando._copia && !editando._criarNovoFixo) {
       editarLancamento(editando.id, base);
     } else if (form.parcelado && !editando) {
       // Gera todas as parcelas de uma vez com IDs únicos e grupoId compartilhado
