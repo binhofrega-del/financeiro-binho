@@ -134,7 +134,14 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
       .map(l => {
         const d = new Date(l.data+'T00:00:00');
         // Lançamento normal no período
-        if (d >= inicio && d <= fim) return l;
+        if (d >= inicio && d <= fim) {
+          // Fixo: também verifica exceções e fim mesmo no mês original
+          if (l.fixo) {
+            if ((l.excecoesMeses||[]).includes(mesAno)) return null;
+            if (l.fixoFimData && mesAno >= l.fixoFimData) return null;
+          }
+          return l;
+        }
 
         // Fixo: só aparece fora do período em modo MÊS ou SEMANA
         // Em modo DIA: só aparece se o dia do mês coincidir com o dia visualizado
@@ -490,9 +497,12 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
           onTodosProximos={() => {
             limparExcecoesFixo(confirmarEditarFixo.id);
             setConfirmarEditarFixo(null);
-            // IMPORTANTE: usa o lançamento ORIGINAL do banco (preserva a data de criação)
+            // Usa o lançamento ORIGINAL do banco — garante que _copia e _fixoMesAno não existem
             const original = lancamentos.find(l => l.id === confirmarEditarFixo.id);
-            setEditando(original || confirmarEditarFixo);
+            const paraEditar = original || confirmarEditarFixo;
+            // Remove flags virtuais que causariam criação de cópia
+            const { _copia, _fixoMesAno, _excecaoDeId, ...limpo } = paraEditar;
+            setEditando(limpo);
             setModalAberto(true);
           }}
         />

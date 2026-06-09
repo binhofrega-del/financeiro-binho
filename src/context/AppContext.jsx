@@ -171,6 +171,20 @@ export function AppProvider({ children }) {
   function removerLancamento(id) {
     setDados(d => ({ ...d, lancamentos: d.lancamentos.filter(l => l.id !== id) }));
   }
+  // Remove entradas duplicadas/órfãs com _copia sem id vinculado
+  function limparDuplicatas() {
+    setDados(d => ({
+      ...d,
+      lancamentos: d.lancamentos.filter(l => {
+        // Remove entradas de exceção órfãs (onde o fixo original foi deletado)
+        if (l._excecaoDeId) {
+          const origemExiste = d.lancamentos.some(x => x.id === l._excecaoDeId);
+          return origemExiste;
+        }
+        return true;
+      }),
+    }));
+  }
   // Remove este lançamento + todos os futuros do mesmo grupo (parcela >= atual)
   function removerParcelasDoGrupo(grupoId, parcelaAtual) {
     setDados(d => ({
