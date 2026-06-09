@@ -236,6 +236,19 @@ export function AppProvider({ children }) {
     }));
   }
 
+  // Ao "Alterar todos os próximos": limpa exceções e remove entradas individuais vinculadas
+  function limparExcecoesFixo(id) {
+    setDados(d => ({
+      ...d,
+      lancamentos: d.lancamentos
+        .filter(l => l._excecaoDeId !== id)      // remove entradas individuais de exceção
+        .map(l => l.id === id
+          ? { ...l, excecoesMeses: [] }           // limpa lista de exceções do fixo
+          : l
+        ),
+    }));
+  }
+
   // Para despesas FIXAS: pago é independente por mês (ex: "2026-06")
   function togglePagoFixo(id, mesAno) {
     setDados(d => ({
@@ -286,7 +299,7 @@ export function AppProvider({ children }) {
       adicionarCartao, editarCartao, removerCartao,
       saldoInicialTotal,
       driveStatus, autenticado, conectarDrive, desconectarDrive, sincronizarDrive,
-      adicionarExcecaoFixo,
+      adicionarExcecaoFixo, limparExcecoesFixo,
       adicionarLancamento, adicionarVariosLancamentos, editarLancamento, removerLancamento, removerParcelasDoGrupo, togglePago, togglePagoFixo, toggleFaturaPaga, pagarFatura, desfazerFatura,
       adicionarCategoria,
     }}>
