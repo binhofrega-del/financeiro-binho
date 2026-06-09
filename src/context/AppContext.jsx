@@ -71,9 +71,12 @@ export function AppProvider({ children }) {
   const saveTimer = useRef(null);
   const salvandoLocal = useRef(false);
 
-  // Salva no localStorage sempre + Drive com debounce
+  // Salva no localStorage SEMPRE (backup local) + Drive com debounce
   useEffect(() => {
+    // Salva com timestamp para saber qual é mais recente
+    const backup = { dados, savedAt: new Date().toISOString() };
     localStorage.setItem('financeiro-app-dados', JSON.stringify(dados));
+    localStorage.setItem('financeiro-app-backup', JSON.stringify(backup));
     if (isSignedIn()) {
       salvandoLocal.current = true;
       clearTimeout(saveTimer.current);
@@ -91,10 +94,22 @@ export function AppProvider({ children }) {
         await initGoogleDrive(
           (status) => setDriveStatus(status),
           (dadosDrive) => {
-            // Só aplica dados do Drive se não há alterações locais pendentes
-            if (dadosDrive && !salvandoLocal.current) {
-              setDados(dadosDrive);
-            }
+            if (!dadosDrive || salvandoLocal.current) return;
+            // Compara com backup local — usa o mais recente
+            try {
+              const backupRaw = localStorage.getItem('financeiro-app-backup');
+              if (backupRaw) {
+                const backup = JSON.parse(backupRaw);
+                const localTime = new Date(backup.savedAt).getTime();
+                const driveTime = new Date(dadosDrive.savedAt || 0).getTime();
+                // Se local é mais recente que drive, mantém local e sobe para drive
+                if (localTime > driveTime && backup.dados?.lancamentos?.length >= (dadosDrive.lancamentos?.length || 0)) {
+                  saveToDrive(backup.dados);
+                  return;
+                }
+              }
+            } catch {}
+            setDados(dadosDrive);
           }
         );
       } catch {

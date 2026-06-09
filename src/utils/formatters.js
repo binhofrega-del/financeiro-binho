@@ -25,6 +25,20 @@ export function corDoTipo(tipo) {
   return '#1d4ed8';
 }
 
+// Calcula em qual mês/ano a compra no cartão vai cair na fatura
+// Se data <= diaFechamento → fatura do mês atual
+// Se data > diaFechamento → fatura do próximo mês
+export function calcularFaturaCartao(dataLancamento, diaFechamento) {
+  const d = new Date(dataLancamento + 'T00:00:00');
+  const dia = d.getDate();
+  if (dia <= diaFechamento) {
+    return { faturaMes: d.getMonth(), faturaAno: d.getFullYear() };
+  } else {
+    const prox = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+    return { faturaMes: prox.getMonth(), faturaAno: prox.getFullYear() };
+  }
+}
+
 // Retorna o logo do banco se existir, ou null
 // Usa BASE_URL para funcionar tanto local quanto no GitHub Pages
 export function logoParaBanco(nome) {

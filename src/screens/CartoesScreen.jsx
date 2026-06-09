@@ -49,18 +49,28 @@ export default function CartoesScreen({ setAba }) {
     return lancamentos
       .filter(l => l.cartaoId === cartao.id)
       .map(l => {
-        const d = new Date(l.data + 'T00:00:00');
-        const noMes = d >= inicioMes && d <= fimMes;
-
-        if (noMes) return l; // lançamento normal do mês
-
-        // Lançamento FIXO no cartão: aparece em todos os meses a partir da data original
-        if (l.fixo && d <= fimMes) {
-          const diaOriginal = l.data.slice(8, 10);
-          const dataNoMes = `${anoAtual}-${String(mesAtual + 1).padStart(2, '0')}-${diaOriginal}`;
-          return { ...l, data: dataNoMes };
+        // Novo: lançamento tem faturaMes/faturaAno definido
+        if (l.faturaMes != null && l.faturaAno != null) {
+          if (l.faturaMes === mesAtual && l.faturaAno === anoAtual) return l;
+          // Fixo: repete todo mês a partir da criação
+          if (l.fixo) {
+            const dCriacao = new Date(l.data + 'T00:00:00');
+            const fimMesRef = new Date(anoAtual, mesAtual + 1, 0);
+            if (dCriacao <= fimMesRef) {
+              const dataNoMes = `${anoAtual}-${String(mesAtual + 1).padStart(2, '0')}-${l.data.slice(8, 10)}`;
+              return { ...l, data: dataNoMes };
+            }
+          }
+          return null;
         }
 
+        // Legado: sem faturaMes, usa a data do lançamento
+        const d = new Date(l.data + 'T00:00:00');
+        if (d >= inicioMes && d <= fimMes) return l;
+        if (l.fixo && d <= fimMes) {
+          const dataNoMes = `${anoAtual}-${String(mesAtual + 1).padStart(2, '0')}-${l.data.slice(8, 10)}`;
+          return { ...l, data: dataNoMes };
+        }
         return null;
       })
       .filter(Boolean)
