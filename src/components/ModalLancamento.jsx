@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { X, Check, ChevronDown } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { calcularFaturaCartao, nomeMes } from '../utils/formatters';
 
 const hoje = () => new Date().toISOString().slice(0, 10);
 
@@ -27,11 +28,28 @@ const vazio = {
 
 export default function ModalLancamento({ editando, onFechar, cartaoPreSelecionado }) {
   const { contas, cartoes, categorias, adicionarLancamento, adicionarVariosLancamentos, editarLancamento } = useApp();
-  // valorCentavos guarda o valor como inteiro de centavos (ex: R$ 12,50 = 1250)
   const [valorCentavos, setValorCentavos] = useState(
     editando ? Math.round(Math.abs(editando.valor) * 100) : 0
   );
   const primeiroCartaoId = cartaoPreSelecionado || cartoes[0]?.id || null;
+
+  // Calcula mês da fatura baseado no cartão e data
+  function calcularMesFatura(cartaoId, data) {
+    const cartao = cartoes.find(c => c.id === Number(cartaoId));
+    if (!cartao) return { faturaMes: new Date().getMonth(), faturaAno: new Date().getFullYear() };
+    return calcularFaturaCartao(data, cartao.diaFechamento);
+  }
+
+  const faturaInicial = primeiroCartaoId
+    ? calcularMesFatura(primeiroCartaoId, hoje())
+    : { faturaMes: new Date().getMonth(), faturaAno: new Date().getFullYear() };
+
+  const [faturaSel, setFaturaSel] = useState(
+    editando?.faturaMes != null
+      ? { faturaMes: editando.faturaMes, faturaAno: editando.faturaAno }
+      : faturaInicial
+  );
+
   const [form, setForm] = useState(editando
     ? { ...editando, valor: String(Math.abs(editando.valor)) }
     : { ...vazio, contaId: contas[0]?.id || null, contaOrigemId: contas[0]?.id || null, contaDestinoId: contas[1]?.id || contas[0]?.id || null, cartaoId: primeiroCartaoId }
@@ -54,13 +72,16 @@ export default function ModalLancamento({ editando, onFechar, cartaoPreSeleciona
       ? valorTotal / (form.totalParcelas || 1)
       : valorTotal;
     const cartaoIdFinal = form.tipo === 'transferencia' ? null : abaForma === 'cartao' ? (form.cartaoId || primeiroCartaoId || null) : null;
+    // Recalcula mês da fatura na hora de salvar
+    const faturaFinal = cartaoIdFinal ? calcularMesFatura(cartaoIdFinal, form.data) : {};
     const base = {
       ...form,
       valor: form.tipo === 'despesa' ? -Math.abs(valorNum) : Math.abs(valorNum),
       contaId: form.tipo === 'transferencia' ? form.contaOrigemId : abaForma === 'conta' ? (form.contaId || null) : null,
       cartaoId: cartaoIdFinal,
-      // Compra no cartão = sempre confirmada (não tem status pendente por transação)
       pago: cartaoIdFinal ? true : form.pago,
+      // Mês da fatura: usa seleção manual se diferente do calculado
+      ...(cartaoIdFinal ? { faturaMes: faturaSel.faturaMes, faturaAno: faturaSel.faturaAno } : {}),
     };
 
     if (editando && editando.id && !editando._copia) {
@@ -251,6 +272,41 @@ export default function ModalLancamento({ editando, onFechar, cartaoPreSeleciona
               />
             )}
           </div>
+
+          {/* Seletor de mês da fatura — só para cartão */}
+          {abaForma === 'cartao' && form.tipo !== 'transferencia' && (() => {
+            const meses = [];
+            const hoje = new Date();
+            for (let i = -1; i <= 3; i++) {
+              const d = new Date(hoje.getFullYear(), hoje.getMonth() + i, 1);
+              meses.push({ mes: d.getMonth(), ano: d.getFullYear(), label: `${nomeMes(d.getMonth())} ${d.getFullYear()}` });
+            }
+            const autoFatura = calcularMesFatura(form.cartaoId || primeiroCartaoId, form.data);
+            return (
+              <div style={{ marginBottom: 14 }}>
+                <label style={lbl}>Mês da fatura</label>
+                <div style={{ position: 'relative' }}>
+                  <select
+                    value={`${faturaSel.faturaAno}-${faturaSel.faturaMes}`}
+                    onChange={e => {
+                      const [ano, mes] = e.target.value.split('-').map(Number);
+                      setFaturaSel({ faturaMes: mes, faturaAno: ano });
+                    }}
+                    style={{ ...inp, appearance: 'none', paddingRight: 36 }}>
+                    {meses.map(m => (
+                      <option key={`${m.ano}-${m.mes}`} value={`${m.ano}-${m.mes}`}>
+                        {m.label} {m.mes === autoFatura.faturaMes && m.ano === autoFatura.faturaAno ? '(automático)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={16} color="#888" style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                </div>
+                <p style={{ fontSize: 11, color: '#aaa', marginTop: 4 }}>
+                  Fechamento: dia {cartoes.find(c=>c.id===(form.cartaoId||primeiroCartaoId))?.diaFechamento} · Vencimento: dia {cartoes.find(c=>c.id===(form.cartaoId||primeiroCartaoId))?.diaVencimento}
+                </p>
+              </div>
+            );
+          })()}
 
           {/* Status pago — só para conta, cartão é sempre confirmado */}
           {abaForma === 'conta' && form.tipo !== 'transferencia' && (
