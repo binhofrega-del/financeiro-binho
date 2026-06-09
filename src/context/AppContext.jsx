@@ -90,16 +90,21 @@ export function AppProvider({ children }) {
     const timer = setTimeout(async () => {
       try {
         await initGoogleDrive(
-          (status) => setDriveStatus(status),
+          (status) => {
+            setDriveStatus(status);
+            // Se falhou ao tentar restaurar sessão → força re-login
+            if (status === 'desconectado' || status === 'erro') {
+              setAutenticado(false);
+            }
+          },
           (dadosDrive) => {
-            // Drive é sempre a fonte da verdade ao carregar
-            // Só ignora se estiver salvando alterações locais neste momento
             if (!dadosDrive || salvandoLocal.current) return;
             setDados(dadosDrive);
           }
         );
       } catch {
         setDriveStatus('desconectado');
+        setAutenticado(false);
       }
     }, 1000);
     return () => clearTimeout(timer);
