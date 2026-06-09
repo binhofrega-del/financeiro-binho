@@ -467,12 +467,10 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
             setConfirmarExcluirFixo(null);
           }}
           onTodosProximos={() => {
-            // Para o fixo a partir deste mês
+            // Para o fixo a partir deste mês — NÃO limpa excecoesMeses (preserva exclusões passadas)
             const mesAno = confirmarExcluirFixo._fixoMesAno ||
               `${anoAtual}-${String(mesAtual+1).padStart(2,'0')}`;
             pararFixoNoMes(confirmarExcluirFixo.id, mesAno);
-            // Também remove entradas de exceção vinculadas
-            limparExcecoesFixo(confirmarExcluirFixo.id);
             setConfirmarExcluirFixo(null);
           }}
         />
@@ -495,14 +493,23 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
             setModalAberto(true);
           }}
           onTodosProximos={() => {
-            limparExcecoesFixo(confirmarEditarFixo.id);
-            setConfirmarEditarFixo(null);
-            // Usa o lançamento ORIGINAL do banco — garante que _copia e _fixoMesAno não existem
+            const mesAnoVirtual = confirmarEditarFixo._fixoMesAno;
             const original = lancamentos.find(l => l.id === confirmarEditarFixo.id);
-            const paraEditar = original || confirmarEditarFixo;
-            // Remove flags virtuais que causariam criação de cópia
-            const { _copia, _fixoMesAno, _excecaoDeId, ...limpo } = paraEditar;
-            setEditando(limpo);
+
+            if (mesAnoVirtual && original) {
+              // Editando de um mês VIRTUAL (futuro):
+              // 1. Para o fixo original ANTES deste mês (preserva meses passados)
+              pararFixoNoMes(original.id, mesAnoVirtual);
+              // 2. Abre modal com NOVO fixo (sem id) começando do mês virtual
+              const { id, _copia, _fixoMesAno, _excecaoDeId, fixoFimData, excecoesMeses, ...resto } = original;
+              setConfirmarEditarFixo(null);
+              setEditando({ ...resto, data: confirmarEditarFixo.data, _criarNovoFixo: true });
+            } else {
+              // Editando do MÊS ORIGINAL: apenas edita normalmente
+              const { _copia, _fixoMesAno, _excecaoDeId, ...limpo } = (original || confirmarEditarFixo);
+              setConfirmarEditarFixo(null);
+              setEditando(limpo);
+            }
             setModalAberto(true);
           }}
         />
