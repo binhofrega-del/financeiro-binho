@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext';
 import { formatarMoeda } from '../utils/formatters';
 import { emojisCategoria } from '../utils/formatters';
 
-export default function DetalheModal({ lanc, onFechar, onEditar, onTogglePago }) {
+export default function DetalheModal({ lanc, onFechar, onEditar, onTogglePago, onExcluir }) {
   const { togglePago, removerLancamento, removerParcelasDoGrupo } = useApp();
   const [confirmarExclusao, setConfirmarExclusao] = useState(false);
 
@@ -23,6 +23,11 @@ export default function DetalheModal({ lanc, onFechar, onEditar, onTogglePago })
   }
 
   function excluir() {
+    // Se for fixo, usa o popup específico de exclusão de fixo
+    if (onExcluir && (lanc.fixo || lanc._fixoMesAno)) {
+      onExcluir(lanc);
+      return;
+    }
     // Se for parcelado com grupoId, mostra opções
     if (lanc.parcelado && lanc.grupoId) {
       setConfirmarExclusao(true);

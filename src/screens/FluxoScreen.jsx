@@ -8,6 +8,7 @@ import FiltroModal from '../components/FiltroModal';
 import ModalPagarFatura from '../components/ModalPagarFatura';
 import IconeBanco from '../components/IconeBanco';
 import ModalEditarFixo from '../components/ModalEditarFixo';
+import ModalExcluirFixo from '../components/ModalExcluirFixo';
 
 const filtroInicial = { tipos: [], situacao: [], contaIds: [], cartaoIds: [], categorias: [], periodo: 'mes', busca: '' };
 
@@ -99,6 +100,7 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
   const [filtroAberto, setFiltroAberto] = useState(false);
   const [faturaParaPagar, setFaturaParaPagar] = useState(null);
   const [confirmarEditarFixo, setConfirmarEditarFixo] = useState(null);
+  const [confirmarExcluirFixo, setConfirmarExcluirFixo] = useState(null);
   const [filtros, setFiltros] = useState(filtroVindoDaHome ? { ...filtroInicial, ...filtroVindoDaHome } : filtroInicial);
 
   const temFiltroAtivo = filtros.tipos.length > 0 || filtros.situacao.length > 0 ||
@@ -110,7 +112,7 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
   const mesAtual = new Date(dataRefBase+'T00:00:00').getMonth();
   const anoAtual = new Date(dataRefBase+'T00:00:00').getFullYear();
 
-  const { adicionarLancamento, adicionarExcecaoFixo, limparExcecoesFixo } = useApp();
+  const { adicionarLancamento, adicionarExcecaoFixo, limparExcecoesFixo, pararFixoNoMes, removerLancamento: removLanc } = useApp();
 
   function abrirEditar(lanc) {
     setDetalhe(null);
@@ -139,6 +141,8 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
         if (l.fixo && d <= fim) {
           // Pula meses de exceção (alterados individualmente)
           if ((l.excecoesMeses||[]).includes(mesAno)) return null;
+          // Pula se o fixo foi parado a partir deste mês
+          if (l.fixoFimData && mesAno >= l.fixoFimData) return null;
           const diaOriginal = parseInt(l.data.slice(8,10));
           // Calcula o dia correto no mês alvo (respeitando último dia do mês)
           const diaAlvo = diaFixoNoMes(l.data, anoAtual, mesAtual);
@@ -431,13 +435,41 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
       <button onClick={() => setModalAberto(true)} style={fab}><Plus size={28} color="white" /></button>
 
       {modalAberto && <ModalLancamento editando={editando} onFechar={fecharModal} />}
-      {detalhe && <DetalheModal lanc={detalhe} onFechar={() => setDetalhe(null)} onEditar={abrirEditar} onTogglePago={() => {
-        if (detalhe._fixoMesAno) togglePagoFixo(detalhe.id, detalhe._fixoMesAno);
-        else togglePago(detalhe.id);
-        setDetalhe(null);
-      }} />}
+      {detalhe && <DetalheModal
+        lanc={detalhe}
+        onFechar={() => setDetalhe(null)}
+        onEditar={abrirEditar}
+        onExcluir={detalhe.fixo || detalhe._fixoMesAno ? (l) => { setDetalhe(null); setConfirmarExcluirFixo(l); } : null}
+        onTogglePago={() => {
+          if (detalhe._fixoMesAno) togglePagoFixo(detalhe.id, detalhe._fixoMesAno);
+          else togglePago(detalhe.id);
+          setDetalhe(null);
+        }} />}
       {filtroAberto && <FiltroModal filtros={filtros} onAplicar={setFiltros} onFechar={() => setFiltroAberto(false)} />}
       {faturaParaPagar && <ModalPagarFatura fatura={faturaParaPagar} onFechar={() => setFaturaParaPagar(null)} />}
+
+      {confirmarExcluirFixo && (
+        <ModalExcluirFixo
+          lanc={confirmarExcluirFixo}
+          onCancelar={() => setConfirmarExcluirFixo(null)}
+          onSoEste={() => {
+            // Só pula este mês no fixo (sem excluir o registro)
+            const mesAno = confirmarExcluirFixo._fixoMesAno ||
+              `${anoAtual}-${String(mesAtual+1).padStart(2,'0')}`;
+            adicionarExcecaoFixo(confirmarExcluirFixo.id, mesAno);
+            setConfirmarExcluirFixo(null);
+          }}
+          onTodosProximos={() => {
+            // Para o fixo a partir deste mês
+            const mesAno = confirmarExcluirFixo._fixoMesAno ||
+              `${anoAtual}-${String(mesAtual+1).padStart(2,'0')}`;
+            pararFixoNoMes(confirmarExcluirFixo.id, mesAno);
+            // Também remove entradas de exceção vinculadas
+            limparExcecoesFixo(confirmarExcluirFixo.id);
+            setConfirmarExcluirFixo(null);
+          }}
+        />
+      )}
 
       {confirmarEditarFixo && (
         <ModalEditarFixo
@@ -456,10 +488,11 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
             setModalAberto(true);
           }}
           onTodosProximos={() => {
-            // Limpa exceções anteriores e edita o fixo original
             limparExcecoesFixo(confirmarEditarFixo.id);
             setConfirmarEditarFixo(null);
-            setEditando(confirmarEditarFixo);
+            // IMPORTANTE: usa o lançamento ORIGINAL do banco (preserva a data de criação)
+            const original = lancamentos.find(l => l.id === confirmarEditarFixo.id);
+            setEditando(original || confirmarEditarFixo);
             setModalAberto(true);
           }}
         />
