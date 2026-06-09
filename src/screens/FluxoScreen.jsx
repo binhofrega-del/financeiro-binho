@@ -195,53 +195,63 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
     const mesAno = `${anoAtual}-${String(mesAtual+1).padStart(2,'0')}`;
     let lista = lancamentos
       .filter(l => !l.cartaoId && l.cartaoId !== 0)
-      .map(l => {
+      .flatMap(l => {
         const d = new Date(l.data+'T00:00:00');
-        // Lançamento normal no período
-        if (d >= inicio && d <= fim) {
-          // Fixo: também verifica exceções e fim mesmo no mês original
-          if (l.fixo) {
-            if ((l.excecoesMeses||[]).includes(mesAno)) return null;
-            if (l.fixoFimData && mesAno >= l.fixoFimData) return null;
+
+        // ── MODO PERSONALIZADO com fixo: gera entrada para cada mês do range ──
+        if (modo === 'personalizado' && l.fixo && d <= fim) {
+          const entradas = [];
+          let cur = new Date(inicio.getFullYear(), inicio.getMonth(), 1);
+          while (cur <= fim) {
+            const curAno = cur.getFullYear();
+            const curMes = cur.getMonth();
+            const curMesAno = `${curAno}-${String(curMes+1).padStart(2,'0')}`;
+            const diaAlvo = diaFixoNoMes(l.data, curAno, curMes);
+            const dataNoMes = new Date(curAno, curMes, diaAlvo);
+
+            // Só inclui se: a data está no range, após a criação, sem exceção, sem fim
+            if (dataNoMes >= inicio && dataNoMes <= fim && dataNoMes >= d &&
+                !(l.excecoesMeses||[]).includes(curMesAno) &&
+                !(l.fixoFimData && curMesAno >= l.fixoFimData)) {
+              const pagoMes = (l.pagoPorMes||{})[curMesAno] ?? false;
+              const dataStr = `${curAno}-${String(curMes+1).padStart(2,'0')}-${String(diaAlvo).padStart(2,'0')}`;
+              entradas.push({ ...l, data: dataStr, pago: pagoMes, _fixoMesAno: curMesAno });
+            }
+            cur.setMonth(cur.getMonth() + 1);
           }
-          return l;
+          return entradas;
         }
 
-        // Fixo: só aparece fora do período em modo MÊS ou SEMANA
-        // Em modo DIA: só aparece se o dia do mês coincidir com o dia visualizado
+        // ── CAMINHO NORMAL ──
+        if (d >= inicio && d <= fim) {
+          if (l.fixo) {
+            if ((l.excecoesMeses||[]).includes(mesAno)) return [];
+            if (l.fixoFimData && mesAno >= l.fixoFimData) return [];
+          }
+          return [l];
+        }
+
+        // ── FIXO em outros modos ──
         if (l.fixo && d <= fim) {
-          // Pula meses de exceção (alterados individualmente)
-          if ((l.excecoesMeses||[]).includes(mesAno)) return null;
-          // Pula se o fixo foi parado a partir deste mês
-          if (l.fixoFimData && mesAno >= l.fixoFimData) return null;
-          const diaOriginal = parseInt(l.data.slice(8,10));
-          // Calcula o dia correto no mês alvo (respeitando último dia do mês)
+          if ((l.excecoesMeses||[]).includes(mesAno)) return [];
+          if (l.fixoFimData && mesAno >= l.fixoFimData) return [];
           const diaAlvo = diaFixoNoMes(l.data, anoAtual, mesAtual);
           const dataNoMes = `${anoAtual}-${String(mesAtual+1).padStart(2,'0')}-${String(diaAlvo).padStart(2,'0')}`;
+          const pagoMes = (l.pagoPorMes||{})[mesAno] ?? false;
 
           if (modo === 'dia') {
-            if (diaAlvo !== inicio.getDate()) return null;
-            const pagoMes = (l.pagoPorMes||{})[mesAno] ?? false;
-            return { ...l, data: dataNoMes, pago: pagoMes, _fixoMesAno: mesAno };
+            if (diaAlvo !== inicio.getDate()) return [];
+            return [{ ...l, data: dataNoMes, pago: pagoMes, _fixoMesAno: mesAno }];
           }
           if (modo === 'semana') {
-            const dataNoMesDate = new Date(anoAtual, mesAtual, diaAlvo);
-            if (dataNoMesDate < inicio || dataNoMesDate > fim) return null;
-            const pagoMes = (l.pagoPorMes||{})[mesAno] ?? false;
-            return { ...l, data: dataNoMes, pago: pagoMes, _fixoMesAno: mesAno };
+            const dt = new Date(anoAtual, mesAtual, diaAlvo);
+            if (dt < inicio || dt > fim) return [];
+            return [{ ...l, data: dataNoMes, pago: pagoMes, _fixoMesAno: mesAno }];
           }
-          if (modo === 'personalizado') {
-            const dataNoMesDate = new Date(anoAtual, mesAtual, diaAlvo);
-            if (dataNoMesDate < inicio || dataNoMesDate > fim) return null;
-            const pagoMes = (l.pagoPorMes||{})[mesAno] ?? false;
-            return { ...l, data: dataNoMes, pago: pagoMes, _fixoMesAno: mesAno };
-          }
-          // Modo mês
-          const pagoMes = (l.pagoPorMes||{})[mesAno] ?? false;
-          return { ...l, data: dataNoMes, pago: pagoMes, _fixoMesAno: mesAno };
+          return [{ ...l, data: dataNoMes, pago: pagoMes, _fixoMesAno: mesAno }];
         }
-        return null;
-      }).filter(Boolean);
+        return [];
+      });
 
     if (filtros.busca) { const b = filtros.busca.toLowerCase(); lista = lista.filter(l => l.descricao.toLowerCase().includes(b)); }
     if (filtros.tipos.length > 0) lista = lista.filter(l => {
