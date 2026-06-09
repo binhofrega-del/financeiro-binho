@@ -209,13 +209,15 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
     }).filter(Boolean);
   }, [cartoes, lancamentos, mesAtual, anoAtual]);
 
+  // Faturas só entram nos totais quando NÃO há busca por texto
+  const incluirFaturas = !filtros.busca;
   const entradasReais = lancFiltrados.filter(l => l.tipo==='receita' && l.pago).reduce((a,l) => a+l.valor, 0);
   const saidasContaReais = lancFiltrados.filter(l => l.tipo==='despesa' && l.pago).reduce((a,l) => a+Math.abs(l.valor), 0);
-  const saidasFaturaReais = faturasMes.filter(f => f.pago).reduce((a,f) => a+Math.abs(f.valor), 0);
+  const saidasFaturaReais = incluirFaturas ? faturasMes.filter(f => f.pago).reduce((a,f) => a+Math.abs(f.valor), 0) : 0;
   const saidasReais = saidasContaReais + saidasFaturaReais;
   const entradasPrev = lancFiltrados.filter(l => l.tipo==='receita').reduce((a,l) => a+l.valor, 0);
   const saidasContaPrev = lancFiltrados.filter(l => l.tipo==='despesa').reduce((a,l) => a+Math.abs(l.valor), 0);
-  const saidasFaturaPrev = faturasMes.reduce((a,f) => a+Math.abs(f.valor), 0);
+  const saidasFaturaPrev = incluirFaturas ? faturasMes.reduce((a,f) => a+Math.abs(f.valor), 0) : 0;
   const saidasPrev = saidasContaPrev + saidasFaturaPrev;
   const entradas = entradasPrev; const saidas = saidasPrev; const saldo = entradasPrev - saidasPrev;
   const saldoRealCumulativo = useMemo(() => {
