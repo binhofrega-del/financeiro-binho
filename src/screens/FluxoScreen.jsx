@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Plus, ChevronLeft, ChevronRight, Check, Repeat, Layers, MoreVertical } from 'lucide-react';
+import { Plus, ChevronLeft, ChevronRight, Check, Repeat, Layers, MoreVertical, Printer } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { formatarMoeda, nomeMes, emojisCategoria } from '../utils/formatters';
 import ModalLancamento from '../components/ModalLancamento';
@@ -101,6 +101,7 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
   const [faturaParaPagar, setFaturaParaPagar] = useState(null);
   const [confirmarEditarFixo, setConfirmarEditarFixo] = useState(null);
   const [confirmarExcluirFixo, setConfirmarExcluirFixo] = useState(null);
+  const [menuAberto, setMenuAberto] = useState(false);
   const [filtros, setFiltros] = useState(filtroVindoDaHome ? { ...filtroInicial, ...filtroVindoDaHome } : filtroInicial);
 
   const temFiltroAtivo = filtros.tipos.length > 0 || filtros.situacao.length > 0 ||
@@ -113,6 +114,69 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
   const anoAtual = new Date(dataRefBase+'T00:00:00').getFullYear();
 
   const { adicionarLancamento, adicionarExcecaoFixo, limparExcecoesFixo, pararFixoNoMes, removerLancamento: removLanc } = useApp();
+
+  function imprimir() {
+    const { contas } = useApp ? {} : {};
+    const itens = [...lancFiltrados, ...(filtros.busca ? [] : faturasMes)]
+      .sort((a,b) => a.data.localeCompare(b.data));
+
+    const linhas = itens.map(l => {
+      const [ano,mes,dia] = l.data.split('-');
+      const data = `${dia}/${mes}/${ano}`;
+      const tipo = l.tipo === 'receita' ? 'Receita' : l.tipo === 'transferencia' ? 'Transf.' : 'Despesa';
+      const valor = (l.tipo==='receita' ? '+' : '-') + 'R$ ' + Math.abs(l.valor).toFixed(2).replace('.',',');
+      const situacao = l.pago ? (l.tipo==='receita' ? 'Recebido' : 'Pago') : (l.tipo==='receita' ? 'Não recebido' : 'Não pago');
+      const conta = l._cartaoBanco ? `${l._cartaoBanco} (cartão)` : '';
+      return `<tr>
+        <td>${tipo}</td>
+        <td>${data}</td>
+        <td>${l.descricao || ''}</td>
+        <td>${conta}</td>
+        <td>${l.categoria || ''}</td>
+        <td style="text-align:right;color:${l.tipo==='receita'?'#16a34a':'#dc2626'}">${valor}</td>
+        <td>${situacao}</td>
+      </tr>`;
+    }).join('');
+
+    const totalReceitas = itens.filter(l=>l.tipo==='receita').reduce((a,l)=>a+Math.abs(l.valor),0);
+    const totalDespesas = itens.filter(l=>l.tipo==='despesa').reduce((a,l)=>a+Math.abs(l.valor),0);
+    const total = totalReceitas - totalDespesas;
+
+    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/>
+    <title>Movimentações</title>
+    <style>
+      body{font-family:Arial,sans-serif;font-size:12px;color:#111;margin:20px}
+      h2{text-align:center;font-size:20px;margin-bottom:4px}
+      .periodo{text-align:center;color:#888;margin-bottom:20px}
+      table{width:100%;border-collapse:collapse;margin-bottom:20px}
+      th{background:#16a34a;color:white;padding:8px 6px;text-align:left;font-size:11px}
+      td{padding:6px;border-bottom:1px solid #eee;font-size:11px}
+      tr:hover{background:#f9fafb}
+      .totais{border-top:2px solid #111;padding-top:10px;text-align:right}
+      .totais div{margin-bottom:4px}
+      @media print{body{margin:10px}}
+    </style></head><body>
+    <h2>Movimentações</h2>
+    <p class="periodo">Período: ${tituloPeriodo(modo, dataRef)}</p>
+    <table>
+      <thead><tr>
+        <th>Tipo</th><th>Data</th><th>Descrição</th>
+        <th>Conta/Cartão</th><th>Categoria</th><th>Valor</th><th>Situação</th>
+      </tr></thead>
+      <tbody>${linhas}</tbody>
+    </table>
+    <div class="totais">
+      <div>Total receitas: <strong style="color:#16a34a">+R$ ${totalReceitas.toFixed(2).replace('.',',')}</strong></div>
+      <div>Total despesas: <strong style="color:#dc2626">-R$ ${totalDespesas.toFixed(2).replace('.',',')}</strong></div>
+      <div style="font-size:14px;margin-top:6px">Total: <strong style="color:${total>=0?'#1d4ed8':'#dc2626'}">R$ ${total.toFixed(2).replace('.',',')}</strong></div>
+    </div>
+    <script>window.onload=()=>{window.print();}</script>
+    </body></html>`;
+
+    const win = window.open('', '_blank');
+    win.document.write(html);
+    win.document.close();
+  }
 
   function abrirEditar(lanc) {
     setDetalhe(null);
@@ -303,10 +367,27 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
       <div style={{ background:'#16a34a', padding:'16px 20px 12px' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
           <h2 style={{ color:'white', fontSize:20, fontWeight:700 }}>Fluxo de Caixa</h2>
-          <button onClick={() => setFiltroAberto(true)} style={{ background:'rgba(255,255,255,0.2)', border:'none', borderRadius:10, padding:'6px 8px', cursor:'pointer', color:'white', display:'flex', alignItems:'center', position:'relative' }}>
-            <MoreVertical size={20} />
-            {temFiltroAtivo && <span style={{ position:'absolute', top:4, right:4, width:8, height:8, background:'#fbbf24', borderRadius:'50%' }} />}
-          </button>
+          <div style={{ position:'relative' }}>
+            <button onClick={() => setMenuAberto(v=>!v)} style={{ background:'rgba(255,255,255,0.2)', border:'none', borderRadius:10, padding:'6px 8px', cursor:'pointer', color:'white', display:'flex', alignItems:'center' }}>
+              <MoreVertical size={20} />
+              {temFiltroAtivo && <span style={{ position:'absolute', top:4, right:4, width:8, height:8, background:'#fbbf24', borderRadius:'50%' }} />}
+            </button>
+            {menuAberto && (
+              <>
+                <div onClick={() => setMenuAberto(false)} style={{ position:'fixed', inset:0, zIndex:19 }} />
+                <div style={{ position:'absolute', top:'110%', right:0, background:'white', borderRadius:14, boxShadow:'0 8px 24px rgba(0,0,0,0.15)', zIndex:20, overflow:'hidden', minWidth:160 }}>
+                  <button onClick={() => { setMenuAberto(false); setFiltroAberto(true); }}
+                    style={{ width:'100%', border:'none', background:'none', padding:'14px 18px', textAlign:'left', fontSize:14, fontWeight:600, color:'#111', cursor:'pointer', display:'flex', alignItems:'center', gap:10, borderBottom:'1px solid #f3f4f6' }}>
+                    <span>⚙</span> Filtrar
+                  </button>
+                  <button onClick={() => { setMenuAberto(false); imprimir(); }}
+                    style={{ width:'100%', border:'none', background:'none', padding:'14px 18px', textAlign:'left', fontSize:14, fontWeight:600, color:'#111', cursor:'pointer', display:'flex', alignItems:'center', gap:10 }}>
+                    <Printer size={16} /> Imprimir
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
         {/* Seletor de período */}
         <div style={{ position:'relative' }}>
