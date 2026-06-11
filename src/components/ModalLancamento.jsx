@@ -93,13 +93,16 @@ export default function ModalLancamento({ editando, onFechar, cartaoPreSeleciona
       const parcelas = Array.from({ length: total }, (_, i) => {
         const dataBase = new Date(form.data + 'T00:00:00');
         dataBase.setMonth(dataBase.getMonth() + i);
+        const dataStr = dataBase.toISOString().slice(0, 10);
+        const faturaParc = cartaoIdFinal ? calcularMesFatura(cartaoIdFinal, dataStr) : {};
         return {
           ...base,
-          data: dataBase.toISOString().slice(0, 10),
+          data: dataStr,
           parcela: i + 1,
           totalParcelas: total,
           grupoId,
           pago: i === 0 ? base.pago : false,
+          ...(cartaoIdFinal ? { faturaMes: faturaParc.faturaMes, faturaAno: faturaParc.faturaAno } : {}),
         };
       });
       adicionarVariosLancamentos(parcelas);

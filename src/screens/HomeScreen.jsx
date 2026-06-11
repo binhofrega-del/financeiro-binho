@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Eye, EyeOff, ChevronRight, TrendingUp, TrendingDown, Plus, CloudOff, Cloud, RefreshCw, Loader } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { formatarMoeda, nomeMes } from '../utils/formatters';
+import { formatarMoeda, nomeMes, calcularFaturaCartao } from '../utils/formatters';
 import ModalLancamento from '../components/ModalLancamento';
 import IconeBanco from '../components/IconeBanco';
 
@@ -16,18 +16,20 @@ export default function HomeScreen({ setAba, irParaFluxo }) {
   const hora = agora.getHours();
   const saudacao = hora >= 5 && hora < 12 ? 'Bom dia' : hora >= 12 && hora < 18 ? 'Boa tarde' : 'Boa noite';
 
-  // Fatura do cartão = compras do mês ANTERIOR (que vencem este mês)
+  // Fatura atual = ciclo de cobrança atualmente aberto (baseado no dia de fechamento do cartão)
   function faturaCartao(cartaoId) {
-    const mesFatura = mesAtual === 0 ? 11 : mesAtual - 1;
-    const anoFatura = mesAtual === 0 ? anoAtual - 1 : anoAtual;
-    const inicioFatura = new Date(anoFatura, mesFatura, 1);
-    const fimFatura = new Date(anoFatura, mesFatura + 1, 0, 23, 59, 59);
+    const cartao = cartoes.find(c => c.id === cartaoId);
+    if (!cartao) return 0;
+    const hojeStr = agora.toISOString().slice(0, 10);
+    const { faturaMes, faturaAno } = calcularFaturaCartao(hojeStr, cartao.diaFechamento);
+    const inicioFatura = new Date(faturaAno, faturaMes, 1);
+    const fimFatura = new Date(faturaAno, faturaMes + 1, 0, 23, 59, 59);
     return lancamentos
       .filter(l => {
         if (l.cartaoId !== cartaoId || l.tipo !== 'despesa') return false;
-        if (l.faturaMes != null) return l.faturaMes === mesFatura && l.faturaAno === anoFatura;
+        if (l.faturaMes != null) return l.faturaMes === faturaMes && l.faturaAno === faturaAno;
         const d = new Date(l.data + 'T00:00:00');
-        return (d >= inicioFatura && d <= fimFatura) || (l.fixo && d <= fimFatura);
+        return d >= inicioFatura && d <= fimFatura;
       })
       .reduce((a, l) => a + Math.abs(l.valor), 0);
   }
