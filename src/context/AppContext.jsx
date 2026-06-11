@@ -107,16 +107,15 @@ export function AppProvider({ children }) {
   const saveTimer = useRef(null);
   const salvandoLocal = useRef(false);
 
-  // Salva no localStorage SEMPRE + Drive (com timestamp para resolver conflito de sincronização)
+  // Salva no localStorage SEMPRE + Drive imediatamente (sem debounce longo)
   useEffect(() => {
-    const ts = Date.now();
     localStorage.setItem('financeiro-app-dados', JSON.stringify(dados));
-    localStorage.setItem('financeiro-app-local-ts', String(ts));
     if (isSignedIn()) {
       salvandoLocal.current = true;
       clearTimeout(saveTimer.current);
+      // Salva rápido: 800ms (garante que exclusões chegam ao Drive antes de abrir outro dispositivo)
       saveTimer.current = setTimeout(async () => {
-        await saveToDrive({ ...dados, _savedAt: ts });
+        await saveToDrive(dados);
         salvandoLocal.current = false;
       }, 800);
     }
@@ -136,10 +135,6 @@ export function AppProvider({ children }) {
           },
           (dadosDrive) => {
             if (!dadosDrive || salvandoLocal.current) return;
-            // Só usa dados do Drive se forem mais novos que os dados locais
-            const localTs = parseInt(localStorage.getItem('financeiro-app-local-ts') || '0');
-            const driveTs = dadosDrive._savedAt || 0;
-            if (driveTs <= localTs) return;
             setDados(aplicarMigracoes(dadosDrive));
           }
         );
