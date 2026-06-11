@@ -39,6 +39,15 @@ export function calcularFaturaCartao(dataLancamento, diaFechamento) {
   }
 }
 
+// Retorna o mês/ano em que a fatura de um mês vence
+// Se o vencimento cai depois do fechamento → vence no próprio mês da fatura
+// Se cai antes ou no dia do fechamento → vence no mês seguinte
+export function vencimentoDaFatura(faturaMes, faturaAno, diaFechamento, diaVencimento) {
+  if (diaVencimento > diaFechamento) return { mes: faturaMes, ano: faturaAno };
+  const prox = new Date(faturaAno, faturaMes + 1, 1);
+  return { mes: prox.getMonth(), ano: prox.getFullYear() };
+}
+
 // Retorna o logo do banco se existir, ou null
 // Usa BASE_URL para funcionar tanto local quanto no GitHub Pages
 export function logoParaBanco(nome) {
