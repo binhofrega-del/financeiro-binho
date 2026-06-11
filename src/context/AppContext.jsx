@@ -47,19 +47,55 @@ const dadosIniciais = {
   ],
 };
 
+// Calcula mês/ano da fatura baseado na data e dia de fechamento do cartão
+function calcFaturaData(data, diaFechamento) {
+  const d = new Date(data + 'T00:00:00');
+  const dia = d.getDate();
+  if (dia <= diaFechamento) return { faturaMes: d.getMonth(), faturaAno: d.getFullYear() };
+  const prox = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+  return { faturaMes: prox.getMonth(), faturaAno: prox.getFullYear() };
+}
+
+// Migração: corrige parcelados onde todas as parcelas têm o mesmo faturaMes (bug antigo)
+function migrarFaturaParcelados(lancamentos, cartoes) {
+  const grupos = {};
+  lancamentos.forEach(l => {
+    if (l.grupoId && l.cartaoId && l.faturaMes != null) {
+      if (!grupos[l.grupoId]) grupos[l.grupoId] = [];
+      grupos[l.grupoId].push(l);
+    }
+  });
+
+  const fixar = {};
+  Object.values(grupos).forEach(grupo => {
+    if (grupo.length < 2) return;
+    const unique = new Set(grupo.map(l => `${l.faturaMes}-${l.faturaAno}`));
+    if (unique.size > 1) return; // já variado — sem migração necessária
+    const cartao = cartoes.find(c => c.id === grupo[0].cartaoId);
+    if (!cartao) return;
+    grupo.forEach(l => {
+      const fat = calcFaturaData(l.data, cartao.diaFechamento);
+      fixar[l.id] = fat;
+    });
+  });
+
+  if (Object.keys(fixar).length === 0) return lancamentos;
+  return lancamentos.map(l => fixar[l.id] ? { ...l, ...fixar[l.id] } : l);
+}
+
+function aplicarMigracoes(dados) {
+  const lancamentos = dados.lancamentos.map(l => ({
+    ...l,
+    cartaoId: l.cartaoId || null,
+    contaId: l.contaId || null,
+  }));
+  return { ...dados, lancamentos: migrarFaturaParcelados(lancamentos, dados.cartoes || []) };
+}
+
 function carregarDados() {
   try {
     const salvo = localStorage.getItem('financeiro-app-dados');
-    if (salvo) {
-      const dados = JSON.parse(salvo);
-      // Migração: limpa cartaoId vazio ('') para null
-      dados.lancamentos = dados.lancamentos.map(l => ({
-        ...l,
-        cartaoId: l.cartaoId || null,
-        contaId: l.contaId || null,
-      }));
-      return dados;
-    }
+    if (salvo) return aplicarMigracoes(JSON.parse(salvo));
   } catch {}
   return dadosIniciais;
 }
@@ -99,7 +135,7 @@ export function AppProvider({ children }) {
           },
           (dadosDrive) => {
             if (!dadosDrive || salvandoLocal.current) return;
-            setDados(dadosDrive);
+            setDados(aplicarMigracoes(dadosDrive));
           }
         );
       } catch {
