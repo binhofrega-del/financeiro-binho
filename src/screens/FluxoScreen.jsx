@@ -274,16 +274,18 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
   }, [lancamentos, modo, dataRef, filtros]);
 
   const faturasMes = useMemo(() => {
-    // A fatura que VENCE neste mês é a do mês ANTERIOR (fechou no mês passado, vence agora)
-    const mesFatura = mesAtual === 0 ? 11 : mesAtual - 1;
-    const anoFatura = mesAtual === 0 ? anoAtual - 1 : anoAtual;
-    const mesAnoFatura = `${anoFatura}-${String(mesFatura+1).padStart(2,'0')}`;
     // Chave de pagamento usa o mês do VENCIMENTO (mês atual)
     const mesAnoVenc = `${anoAtual}-${String(mesAtual+1).padStart(2,'0')}`;
-    const inicioFatura = new Date(anoFatura,mesFatura,1);
-    const fimFatura = new Date(anoFatura,mesFatura+1,0,23,59,59);
 
     return cartoes.map(cartao => {
+      // Qual fatura VENCE neste mês depende do cartão:
+      // vencimento depois do fechamento → fatura do próprio mês; antes → fatura do mês anterior
+      const vencMesmoMes = cartao.diaVencimento > cartao.diaFechamento;
+      const mesFatura = vencMesmoMes ? mesAtual : (mesAtual === 0 ? 11 : mesAtual - 1);
+      const anoFatura = vencMesmoMes ? anoAtual : (mesAtual === 0 ? anoAtual - 1 : anoAtual);
+      const inicioFatura = new Date(anoFatura,mesFatura,1);
+      const fimFatura = new Date(anoFatura,mesFatura+1,0,23,59,59);
+
       const totalFatura = lancamentos.filter(l => {
         if (l.cartaoId !== cartao.id || l.tipo !== 'despesa') return false;
         // Novo: usa faturaMes/faturaAno
@@ -328,7 +330,28 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
   const entradas = entradasPrev; const saidas = saidasPrev; const saldo = entradasPrev - saidasPrev;
   const saldoRealCumulativo = useMemo(() => {
     let s = saldoGeral;
-    cartoes.forEach(cartao => { const fp = cartao.faturasPagas||{}; Object.entries(fp).forEach(([mesAno,f]) => { const pago = typeof f==='object'?f?.pago:!!f; if (!pago) return; const [a,m] = mesAno.split('-').map(Number); const iniM=new Date(a,m-1,1); const fimM=new Date(a,m,0,23,59,59); const total = lancamentos.filter(l => { if(l.cartaoId!==cartao.id||l.tipo!=='despesa') return false; const d=new Date(l.data+'T00:00:00'); return (d>=iniM&&d<=fimM)||(l.fixo&&d<=fimM); }).reduce((acc,l) => acc+Math.abs(l.valor),0); s-=total; }); });
+    // Faturas pagas COM conta vinculada já são descontadas no saldo da conta (AppContext).
+    // Aqui desconta apenas pagamentos legados (sem contaId registrado), para não duplicar.
+    cartoes.forEach(cartao => {
+      const fp = cartao.faturasPagas||{};
+      Object.entries(fp).forEach(([mesAno,f]) => {
+        const info = typeof f==='object' ? f : { pago: !!f };
+        if (!info.pago || info.contaId) return;
+        // mesAno é o mês do VENCIMENTO; a fatura correspondente depende do cartão
+        const [a,m] = mesAno.split('-').map(Number);
+        const vencMesmoMes = cartao.diaVencimento > cartao.diaFechamento;
+        let fm = m - 1, fa = a; // 0-based
+        if (!vencMesmoMes) { fm = fm - 1; if (fm < 0) { fm = 11; fa--; } }
+        const iniM = new Date(fa,fm,1); const fimM = new Date(fa,fm+1,0,23,59,59);
+        const total = lancamentos.filter(l => {
+          if (l.cartaoId!==cartao.id||l.tipo!=='despesa') return false;
+          if (l.faturaMes != null) return l.faturaMes === fm && l.faturaAno === fa;
+          const d = new Date(l.data+'T00:00:00');
+          return (d>=iniM&&d<=fimM)||(l.fixo&&d<=fimM);
+        }).reduce((acc,l) => acc+Math.abs(l.valor),0);
+        s -= info.valor != null ? info.valor : total;
+      });
+    });
     return s;
   }, [saldoGeral, cartoes, lancamentos]);
   const saldoPrevCumulativo = useMemo(() => {

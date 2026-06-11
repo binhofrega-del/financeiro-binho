@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { ChevronLeft, ChevronRight, Plus, CreditCard } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { formatarMoeda, nomeMes, emojisCategoria, logoParaBanco } from '../utils/formatters';
+import { formatarMoeda, nomeMes, emojisCategoria, logoParaBanco, vencimentoDaFatura, calcularFaturaCartao } from '../utils/formatters';
 import ModalLancamento from '../components/ModalLancamento';
 import DetalheModal from '../components/DetalheModal';
 
@@ -64,9 +64,10 @@ export default function CartoesScreen({ setAba }) {
           return null;
         }
 
-        // Legado: sem faturaMes, usa a data do lançamento
+        // Legado: sem faturaMes, calcula a fatura pelo ciclo de fechamento
         const d = new Date(l.data + 'T00:00:00');
-        if (d >= inicioMes && d <= fimMes) return l;
+        const fat = calcularFaturaCartao(l.data, cartao.diaFechamento);
+        if (fat.faturaMes === mesAtual && fat.faturaAno === anoAtual) return l;
         if (l.fixo && d <= fimMes) {
           const dataNoMes = `${anoAtual}-${String(mesAtual + 1).padStart(2, '0')}-${l.data.slice(8, 10)}`;
           return { ...l, data: dataNoMes };
@@ -78,7 +79,12 @@ export default function CartoesScreen({ setAba }) {
   }, [lancamentos, cartao.id, mesAtual, anoAtual]);
 
   const totalFatura = lancCartao.reduce((acc, l) => acc + Math.abs(l.valor), 0);
-  const totalPago = lancCartao.filter(l => l.pago).reduce((acc, l) => acc + Math.abs(l.valor), 0);
+  // Status da fatura (paga/aberta) — registrado pela chave do mês de VENCIMENTO
+  const venc = vencimentoDaFatura(mesAtual, anoAtual, cartao.diaFechamento, cartao.diaVencimento);
+  const chaveVenc = `${venc.ano}-${String(venc.mes + 1).padStart(2, '0')}`;
+  const fpInfo = (cartao.faturasPagas || {})[chaveVenc];
+  const faturaPaga = typeof fpInfo === 'object' ? !!fpInfo?.pago : !!fpInfo;
+  const totalPago = faturaPaga ? totalFatura : 0;
   const totalPendente = totalFatura - totalPago;
   const disponivel = cartao.limite - totalFatura;
   const pctUsado = Math.min((totalFatura / cartao.limite) * 100, 100);
@@ -271,11 +277,11 @@ function SemCartao({ setAba }) {
 }
 
 function CardVisual({ cartao, mesAtual, anoAtual, totalFatura, disponivel, pctUsado }) {
-  // A fatura do mês X fecha no mês X-1 e vence no mês X
-  const mesFech = mesAtual === 0 ? 11 : mesAtual - 1;
-  const anoFech = mesAtual === 0 ? anoAtual - 1 : anoAtual;
-  const dataFecha = `${String(cartao.diaFechamento).padStart(2,'0')}/${String(mesFech + 1).padStart(2,'0')}/${anoFech}`;
-  const dataVence = `${String(cartao.diaVencimento).padStart(2,'0')}/${String(mesAtual + 1).padStart(2,'0')}/${anoAtual}`;
+  // A fatura do mês X agrupa as compras do ciclo e FECHA no diaFechamento do próprio mês X;
+  // o vencimento cai no mesmo mês ou no seguinte, conforme a configuração do cartão
+  const venc = vencimentoDaFatura(mesAtual, anoAtual, cartao.diaFechamento, cartao.diaVencimento);
+  const dataFecha = `${String(cartao.diaFechamento).padStart(2,'0')}/${String(mesAtual + 1).padStart(2,'0')}/${anoAtual}`;
+  const dataVence = `${String(cartao.diaVencimento).padStart(2,'0')}/${String(venc.mes + 1).padStart(2,'0')}/${venc.ano}`;
 
   return (
     <div style={{ background: `linear-gradient(135deg, ${cartao.cor}, #1d4ed8)`, borderRadius: 18, padding: '18px 20px', color: 'white', boxShadow: '0 8px 24px rgba(0,0,0,0.2)' }}>
