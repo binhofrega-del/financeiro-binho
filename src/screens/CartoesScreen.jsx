@@ -1,12 +1,12 @@
 import { useState, useMemo } from 'react';
 import { ChevronLeft, ChevronRight, Plus, CreditCard } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { formatarMoeda, nomeMes, emojisCategoria, logoParaBanco } from '../utils/formatters';
+import { formatarMoeda, nomeMes, emojiCategoria, logoParaBanco } from '../utils/formatters';
 import DetalheModal from '../components/DetalheModal';
 import { useAcoesLancamento } from '../hooks/useAcoesLancamento';
 import {
   hojeISO, somarMeses, mesmoMes, faturaAtual, itensDaFatura, totalDosItens,
-  infoPagamentoFatura, limiteUsado, diasAteVencimento, dataFechamento, dataVencimento,
+  infoPagamentoFatura, limiteUsado, diasAteVencimento, dataFechamento, dataVencimento, nomeFatura,
 } from '../utils/financas';
 
 const brData = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
@@ -145,7 +145,7 @@ export default function CartoesScreen({ setAba }) {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
           <div style={{ flex: 1, background: 'white', borderRadius: 12, padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
             <button onClick={() => mudarMes(-1)} style={navBtnDark}><ChevronLeft size={18} /></button>
-            <span style={{ fontSize: 14, fontWeight: 700, color: '#111' }}>Fatura de {nomeMes(mesAtual)} {anoAtual}</span>
+            <span style={{ fontSize: 14, fontWeight: 700, color: '#111' }}>Fatura de {nomeFatura({ ano: anoAtual, mes: mesAtual }, cartao)}</span>
             <button onClick={() => mudarMes(1)} style={navBtnDark}><ChevronRight size={18} /></button>
           </div>
           {!mesmoMes(fat, fatAberta) && (
@@ -163,7 +163,7 @@ export default function CartoesScreen({ setAba }) {
             {porCategoria.map(({ cat, val, pct }) => (
               <div key={cat} style={{ marginBottom: 10 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <span style={{ fontSize: 13, color: '#444' }}>{emojisCategoria[cat] || '📌'} {cat}</span>
+                  <span style={{ fontSize: 13, color: '#444' }}>{emojiCategoria(cat)} {cat}</span>
                   <span style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>{formatarMoeda(val)}</span>
                 </div>
                 <div style={{ background: '#f3f4f6', borderRadius: 3, height: 5 }}>
@@ -194,7 +194,7 @@ export default function CartoesScreen({ setAba }) {
                   <div key={`${l.id}-${l._fixoMesAno || ''}`} onClick={() => setDetalhe(l)}
                     style={{ background: 'white', borderRadius: 13, padding: '11px 13px', marginBottom: 7, display: 'flex', alignItems: 'center', gap: 11, boxShadow: '0 1px 4px rgba(0,0,0,0.05)', cursor: 'pointer' }}>
                     <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>
-                      {emojisCategoria[l.categoria] || '📌'}
+                      {emojiCategoria(l.categoria)}
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ fontSize: 14, fontWeight: 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.descricao}</p>
@@ -267,7 +267,7 @@ function CardVisual({ cartao, mesAtual, anoAtual, totalFatura, disponivel, pctUs
 
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 18 }}>
         <div>
-          <p style={{ fontSize: 10, opacity: 0.7 }}>Fatura {nomeMes(mesAtual)}</p>
+          <p style={{ fontSize: 10, opacity: 0.7 }}>Fatura {nomeFatura(fat, cartao)}</p>
           <p style={{ fontSize: 22, fontWeight: 800 }}>{formatarMoeda(totalFatura)}</p>
         </div>
         <div style={{ textAlign: 'right' }}>

@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext';
 import { nomeMes } from '../utils/formatters';
 import {
   hojeISO, gerarId, faturaDaCompra, somarMeses, difMeses, chaveDaData,
-  dividirEmParcelas, dataDaParcela, PERIODOS_PARCELA,
+  dividirEmParcelas, dataDaParcela, PERIODOS_PARCELA, nomeFatura,
 } from '../utils/financas';
 
 const hoje = () => hojeISO();
@@ -223,6 +223,14 @@ export default function ModalLancamento({ editando, onFechar, cartaoPreSeleciona
             </div>
           </div>
 
+          {/* Observação */}
+          <div style={{ marginBottom: 14 }}>
+            <label style={lbl}>Observação</label>
+            <textarea rows={2} placeholder="Opcional" value={form.observacao || ''}
+              onChange={e => set('observacao', e.target.value)}
+              style={{ ...inp, resize: 'vertical', fontFamily: 'inherit', fontSize: 14 }} />
+          </div>
+
           {/* Forma de pagamento — Transferência mostra origem + destino */}
           {form.tipo === 'transferencia' ? (
             <>
@@ -303,15 +311,18 @@ export default function ModalLancamento({ editando, onFechar, cartaoPreSeleciona
           {/* Seletor de mês da fatura — só para cartão */}
           {abaForma === 'cartao' && form.tipo !== 'transferencia' && (() => {
             const autoFatura = calcularMesFatura(form.cartaoId || primeiroCartaoId, form.data);
+            const cartaoSel = cartoes.find(c => c.id === Number(form.cartaoId || primeiroCartaoId));
+            // Nome da fatura pelo mês do vencimento (igual ao Nubank/Organizze)
+            const rotulo = (ano, mes) => cartaoSel ? nomeFatura({ ano, mes }, cartaoSel) : `${nomeMes(mes)} ${ano}`;
             const auto = { ano: autoFatura.faturaAno, mes: autoFatura.faturaMes };
             const meses = [];
             for (let i = -2; i <= 4; i++) {
               const d = somarMeses(auto, i);
-              meses.push({ mes: d.mes, ano: d.ano, label: `${nomeMes(d.mes)} ${d.ano}` });
+              meses.push({ mes: d.mes, ano: d.ano, label: rotulo(d.ano, d.mes) });
             }
             // garante que a fatura já salva aparece na lista, mesmo se estiver longe
             if (!meses.some(m => m.mes === faturaSel.faturaMes && m.ano === faturaSel.faturaAno)) {
-              meses.push({ mes: faturaSel.faturaMes, ano: faturaSel.faturaAno, label: `${nomeMes(faturaSel.faturaMes)} ${faturaSel.faturaAno}` });
+              meses.push({ mes: faturaSel.faturaMes, ano: faturaSel.faturaAno, label: rotulo(faturaSel.faturaAno, faturaSel.faturaMes) });
               meses.sort((a, b) => (a.ano * 12 + a.mes) - (b.ano * 12 + b.mes));
             }
             return (

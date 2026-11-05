@@ -1,9 +1,10 @@
 import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { initGoogleDrive, saveToDrive, loadFromDrive, signIn, signOut, isSignedIn } from '../services/googleDrive';
-import { gerarId, faturaDaCompra, calcularSaldos, chaveDaData } from '../utils/financas';
+import { gerarId, faturaDaCompra, calcularSaldos, chaveDaData, hojeISO } from '../utils/financas';
 
 const AppContext = createContext();
 
+// App começa vazio: os dados reais vêm do Google Drive ou da importação do Organizze
 const dadosIniciais = {
   contas: [],
   cartoes: [],
@@ -204,7 +205,7 @@ export function AppProvider({ children }) {
       cartoes: d.cartoes.map(c => {
         if (c.id !== cartaoId) return c;
         const faturasPagas = c.faturasPagas || {};
-        return { ...c, faturasPagas: { ...faturasPagas, [mesAno]: { pago: true, contaId, valor: totalFatura } } };
+        return { ...c, faturasPagas: { ...faturasPagas, [mesAno]: { pago: true, contaId, valor: totalFatura, data: hojeISO() } } };
       }),
     }));
   }
@@ -296,6 +297,16 @@ export function AppProvider({ children }) {
     }));
   }
 
+  // Troca TODOS os dados (importação do Organizze / restauração de backup)
+  function substituirDados(novos) {
+    setDados(aplicarMigracoes({
+      contas: novos.contas || [],
+      cartoes: novos.cartoes || [],
+      lancamentos: novos.lancamentos || [],
+      categorias: novos.categorias?.length ? novos.categorias : dadosIniciais.categorias,
+    }));
+  }
+
   // CATEGORIAS
   function adicionarCategoria(cat) {
     setDados(d => ({ ...d, categorias: [...d.categorias, { ...cat, id: gerarId() }] }));
@@ -319,7 +330,7 @@ export function AppProvider({ children }) {
       driveStatus, autenticado, conectarDrive, desconectarDrive, sincronizarDrive,
       adicionarExcecaoFixo, limparExcecoesFixo, pararFixoNoMes, removerFixo, setPagoFixo,
       adicionarLancamento, adicionarVariosLancamentos, editarLancamento, removerLancamento, removerParcelasDoGrupo, togglePago, toggleFaturaPaga, pagarFatura, desfazerFatura,
-      adicionarCategoria,
+      adicionarCategoria, substituirDados,
     }}>
       {children}
     </AppContext.Provider>

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Trash2, Copy, ThumbsUp, ThumbsDown, Pencil, X, AlertTriangle } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { formatarMoeda } from '../utils/formatters';
-import { emojisCategoria } from '../utils/formatters';
+import { emojiCategoria } from '../utils/formatters';
 
 export default function DetalheModal({ lanc, onFechar, onEditar, onTogglePago, onExcluir }) {
   const { togglePago, setPagoFixo, removerLancamento, removerParcelasDoGrupo } = useApp();
@@ -14,7 +14,7 @@ export default function DetalheModal({ lanc, onFechar, onEditar, onTogglePago, o
   const isFatura = !!lanc._isFatura;
   const cor = isReceita ? '#16a34a' : isTransf ? '#1d4ed8' : '#dc2626';
   const bgIcon = isReceita ? '#dcfce7' : isTransf ? '#dbeafe' : '#fee2e2';
-  const emoji = emojisCategoria[lanc.categoria] || '📌';
+  const emoji = emojiCategoria(lanc.categoria);
 
   function duplicar() {
     // Cópia "limpa": sem vínculo com fixo, grupo de parcelas ou exceções do original
@@ -147,6 +147,12 @@ export default function DetalheModal({ lanc, onFechar, onEditar, onTogglePago, o
           {!isCartao && <DetalheItem label="Status" valor={lanc.pago ? (isReceita ? '✅ Recebido' : '✅ Pago') : (isReceita ? '⏳ Não recebido' : '⏳ Não pago')} />}
           <DetalheItem label="Tipo" valor={isReceita ? '⬆ Receita' : isTransf ? '↔ Transferência' : '⬇ Despesa'} />
         </div>
+        {lanc.observacao && (
+          <div style={{ padding: '16px 24px 0' }}>
+            <p style={{ fontSize: 11, color: '#aaa', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>Observação</p>
+            <p style={{ fontSize: 14, color: '#333', marginTop: 4, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{lanc.observacao}</p>
+          </div>
+        )}
       </div>
 
       {/* Modal de confirmação de exclusão de parcelas */}

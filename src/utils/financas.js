@@ -184,12 +184,22 @@ export function faturaQueVenceEm(ma, cartao) {
 }
 
 // Status de pagamento (faturasPagas é indexado pelo mês do VENCIMENTO).
+// externo = paga fora das contas controladas (não mexe em saldo nenhum).
 export function infoPagamentoFatura(cartao, fat) {
   const v = vencimentoDaFatura(fat, cartao);
   const chave = chaveMes(v.ano, v.mes);
   const raw = (cartao.faturasPagas || {})[chave];
   const info = raw && typeof raw === 'object' ? raw : { pago: !!raw };
-  return { chave, pago: !!info.pago, contaId: info.contaId ?? null, valor: info.valor ?? null };
+  return {
+    chave, pago: !!info.pago, contaId: info.contaId ?? null, valor: info.valor ?? null,
+    data: info.data ?? null, externo: !!info.externo,
+  };
+}
+
+// Nome da fatura pelo mês do VENCIMENTO (como o Nubank e o Organizze chamam)
+export function nomeFatura(fat, cartao) {
+  const v = vencimentoDaFatura(fat, cartao);
+  return `${MESES[v.mes]} ${v.ano}`;
 }
 
 // Itens (compras, estornos e fixos) que compõem uma fatura.
@@ -221,10 +231,10 @@ export function montarFatura(cartao, lancamentos, fat) {
   const total = totalDosItens(itens);
   const pg = infoPagamentoFatura(cartao, fat);
   if (itens.length === 0 && !pg.pago) return null;
-  const valor = pg.pago && pg.valor != null ? pg.valor : total;
+  const valor = pg.pago && pg.valor != null && !pg.externo ? pg.valor : total;
   return {
     id: `fatura-${cartao.id}-${pg.chave}`,
-    descricao: `Fatura ${MESES[fat.mes]} ${fat.ano}`,
+    descricao: `Fatura ${nomeFatura(fat, cartao)}`,
     valor: -valor,
     data: dataVencimento(fat, cartao),
     tipo: 'despesa',
@@ -238,6 +248,7 @@ export function montarFatura(cartao, lancamentos, fat) {
     _cartaoCor: cartao.cor,
     _mesAno: pg.chave,
     _contaIdPagamento: pg.contaId,
+    _externo: pg.externo,
     _fatura: fat,
     _totalItens: total,
   };
@@ -349,9 +360,9 @@ export function calcularSaldos(dados, { ate = null } = {}) {
   for (const cartao of cartoes) {
     for (const [chave, raw] of Object.entries(cartao.faturasPagas || {})) {
       const info = raw && typeof raw === 'object' ? raw : { pago: !!raw };
-      if (!info.pago) continue;
+      if (!info.pago || info.externo) continue;
       const fat = faturaQueVenceEm(mesAnoDaChave(chave), cartao);
-      if (ate && dataVencimento(fat, cartao) > ate) continue;
+      if (ate && (info.data || dataVencimento(fat, cartao)) > ate) continue;
       const valor = info.valor != null ? info.valor : totalDosItens(itensDaFatura(lancamentos, cartao, fat));
       if (info.contaId != null && contas.some((c) => String(c.id) === String(info.contaId))) add(info.contaId, -valor);
       else semConta -= valor;
@@ -380,7 +391,7 @@ export function saldoPrevisto(dados, fim) {
   if (!inicio || inicio > fim) return arred(total);
 
   lancamentosContaNoPeriodo(lancamentos, inicio, fim).forEach((l) => aplicarEfeito(l, add));
-  faturasNoPeriodo(cartoes, lancamentos, inicio, fim).forEach((f) => { total -= Math.abs(f.valor); });
+  faturasNoPeriodo(cartoes, lancamentos, inicio, fim).forEach((f) => { if (!f._externo) total -= Math.abs(f.valor); });
   return arred(total);
 }
 

@@ -22,3 +22,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Exportações do Organizze e backups (dados pessoais — NUNCA subir para o GitHub)
+*.xls
+*.xlsx
+*.csv
+importacao/
+backup*.json

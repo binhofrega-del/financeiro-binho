@@ -45,9 +45,5 @@ export function logoParaBanco(nome) {
   return null;
 }
 
-export const emojisCategoria = {
-  'Moradia': '🏠', 'Alimentação': '🍔', 'Utilidades': '💡', 'Viagem': '✈️',
-  'Assinatura': '📺', 'Aluguel': '🏘️', 'Imóvel': '🏗️', 'Saúde': '💊',
-  'Transporte': '🚗', 'Lazer': '🎉', 'Educação': '📚', 'Salário': '💼',
-  'Outros': '📌',
-};
+// Emoji da categoria (inclui as categorias do Organizze, sem diferenciar acento/maiúscula)
+export { emojiDaCategoria as emojiCategoria } from './importOrganizze';

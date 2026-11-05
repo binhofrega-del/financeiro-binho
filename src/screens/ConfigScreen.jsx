@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Plus, Pencil, Trash2, X, Check, CreditCard, Wallet, ChevronRight } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Check, CreditCard, Wallet, ChevronRight, Upload } from 'lucide-react';
+import ImportarScreen from './ImportarScreen';
 import { useApp } from '../context/AppContext';
 import { VERSAO, BUILD_DATA, BUILD_COMMIT } from '../utils/versao';
 import { formatarMoeda } from '../utils/formatters';
@@ -35,6 +36,8 @@ export default function ConfigScreen() {
     setSecao('cartoes');
   }
 
+  if (secao === 'importar') return <ImportarScreen onVoltar={() => setSecao('principal')} />;
+
   // TELA PRINCIPAL
   if (secao === 'principal') return (
     <div style={{ flex: 1, overflowY: 'auto', background: '#f3f4f6' }}>
@@ -43,6 +46,7 @@ export default function ConfigScreen() {
 
         <MenuItem icon={<Wallet size={20} color="#16a34a" />} label="Minhas Contas" sub={`${contas.length} conta(s)`} onClick={() => setSecao('contas')} />
         <MenuItem icon={<CreditCard size={20} color="#7c3aed" />} label="Cartões de Crédito" sub={`${cartoes.length} cartão(ões)`} onClick={() => setSecao('cartoes')} />
+        <MenuItem icon={<Upload size={20} color="#1d4ed8" />} label="Importar e backup" sub="Importar do Organizze · baixar/restaurar backup" onClick={() => setSecao('importar')} />
 
         <div style={{ ...card, marginTop: 8 }}>
           <p style={{ fontSize: 11, color: '#aaa', textAlign: 'center' }}>Controle Financeiro Pessoal</p>

@@ -23,6 +23,9 @@ export default function ModalPagarFatura({ fatura, onFechar }) {
               <p style={{ fontSize: 22, fontWeight: 800, color: '#16a34a', marginTop: 6 }}>{formatarMoeda(Math.abs(fatura.valor))}</p>
             </div>
 
+            {fatura._externo && (
+              <p style={{ fontSize: 12, color: '#888', textAlign: 'center', marginBottom: 12 }}>Paga fora das contas do app (importado do Organizze)</p>
+            )}
             {/* Mostra qual conta foi usada */}
           {fatura._contaIdPagamento && (() => {
             const contaPago = contas.find(c => c.id === fatura._contaIdPagamento);

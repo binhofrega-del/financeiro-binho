@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Plus, ChevronLeft, ChevronRight, Repeat, Layers, MoreVertical, Printer } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { formatarMoeda, nomeMes, emojisCategoria } from '../utils/formatters';
+import { formatarMoeda, nomeMes, emojiCategoria } from '../utils/formatters';
 import DetalheModal from '../components/DetalheModal';
 import FiltroModal from '../components/FiltroModal';
 import ModalPagarFatura from '../components/ModalPagarFatura';
@@ -359,7 +359,7 @@ function ResumoBox({ label, valor, cor, prefixo='' }) {
   return (
     <div style={{ flex:1, background:'white', borderRadius:12, padding:'10px 8px', textAlign:'center', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
       <p style={{ fontSize:10, color:'#888', fontWeight:600, textTransform:'uppercase' }}>{label}</p>
-      <p style={{ fontSize:13, fontWeight:700, color:cor, marginTop:3 }}>{prefixo}{formatarMoeda(Math.abs(valor))}</p>
+      <p style={{ fontSize:13, fontWeight:700, color:cor, marginTop:3 }}>{prefixo || (valor < 0 ? '-' : '')}{formatarMoeda(Math.abs(valor))}</p>
     </div>
   );
 }
@@ -367,7 +367,7 @@ function ResumoBox({ label, valor, cor, prefixo='' }) {
 function DemoCol({ valor, label, cor, sinal='', pequeno=false }) {
   return (
     <div style={{ flex:1, textAlign:'center' }}>
-      <p style={{ fontSize:pequeno?12:14, fontWeight:700, color:cor }}>{sinal}{formatarMoeda(Math.abs(valor))}</p>
+      <p style={{ fontSize:pequeno?12:14, fontWeight:700, color:cor }}>{sinal || (valor < 0 ? '-' : '')}{formatarMoeda(Math.abs(valor))}</p>
       <p style={{ fontSize:10, color:'#aaa', fontWeight:500 }}>{label}</p>
     </div>
   );
@@ -379,7 +379,7 @@ function CardLancamento({ lanc, onClick }) {
   const isTransf = lanc.tipo==='transferencia';
   const cor = isReceita?'#16a34a':isTransf?'#1d4ed8':'#dc2626';
   const bgIcon = isReceita?'#dcfce7':isTransf?'#dbeafe':'#fee2e2';
-  const emoji = emojisCategoria[lanc.categoria]||'📌';
+  const emoji = emojiCategoria(lanc.categoria);
   const conta = contas.find(c => c.id===lanc.contaId);
   const destino = isTransf ? contas.find(c => c.id===lanc.contaDestinoId) : null;
 
