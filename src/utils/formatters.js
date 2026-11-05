@@ -10,10 +10,9 @@ export function formatarData(dataStr) {
   return `${dia}/${mes}/${ano}`;
 }
 
-export const MESES = [
-  'Janeiro','Fevereiro','Março','Abril','Maio','Junho',
-  'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'
-];
+// MESES e as regras de fatura agora vêm de financas.js (fonte única)
+export { MESES } from './financas';
+import { MESES, faturaDaCompra, vencimentoDaFatura as vencFat } from './financas';
 
 export function nomeMes(mes) {
   return MESES[mes];
@@ -25,27 +24,14 @@ export function corDoTipo(tipo) {
   return '#1d4ed8';
 }
 
-// Calcula em qual mês/ano a compra no cartão vai cair na fatura
-// Se data <= diaFechamento → fatura do mês atual
-// Se data > diaFechamento → fatura do próximo mês
+// Compatibilidade: wrappers sobre financas.js
 export function calcularFaturaCartao(dataLancamento, diaFechamento) {
-  const d = new Date(dataLancamento + 'T00:00:00');
-  const dia = d.getDate();
-  if (dia <= diaFechamento) {
-    return { faturaMes: d.getMonth(), faturaAno: d.getFullYear() };
-  } else {
-    const prox = new Date(d.getFullYear(), d.getMonth() + 1, 1);
-    return { faturaMes: prox.getMonth(), faturaAno: prox.getFullYear() };
-  }
+  const f = faturaDaCompra(dataLancamento, diaFechamento);
+  return { faturaMes: f.mes, faturaAno: f.ano };
 }
 
-// Retorna o mês/ano em que a fatura de um mês vence
-// Se o vencimento cai depois do fechamento → vence no próprio mês da fatura
-// Se cai antes ou no dia do fechamento → vence no mês seguinte
 export function vencimentoDaFatura(faturaMes, faturaAno, diaFechamento, diaVencimento) {
-  if (diaVencimento > diaFechamento) return { mes: faturaMes, ano: faturaAno };
-  const prox = new Date(faturaAno, faturaMes + 1, 1);
-  return { mes: prox.getMonth(), ano: prox.getFullYear() };
+  return vencFat({ ano: faturaAno, mes: faturaMes }, { diaFechamento, diaVencimento });
 }
 
 // Retorna o logo do banco se existir, ou null

@@ -1,5 +1,6 @@
-import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { initGoogleDrive, saveToDrive, loadFromDrive, signIn, signOut, isSignedIn } from '../services/googleDrive';
+import { gerarId, faturaDaCompra, calcularSaldos, chaveDaData } from '../utils/financas';
 
 const AppContext = createContext();
 
@@ -26,11 +27,8 @@ const dadosIniciais = {
 
 // Calcula mês/ano da fatura baseado na data e dia de fechamento do cartão
 function calcFaturaData(data, diaFechamento) {
-  const d = new Date(data + 'T00:00:00');
-  const dia = d.getDate();
-  if (dia <= diaFechamento) return { faturaMes: d.getMonth(), faturaAno: d.getFullYear() };
-  const prox = new Date(d.getFullYear(), d.getMonth() + 1, 1);
-  return { faturaMes: prox.getMonth(), faturaAno: prox.getFullYear() };
+  const f = faturaDaCompra(data, diaFechamento);
+  return { faturaMes: f.mes, faturaAno: f.ano };
 }
 
 // Migração: corrige parcelados onde todas as parcelas têm o mesmo faturaMes (bug antigo)
@@ -73,7 +71,7 @@ function carregarDados() {
   try {
     const salvo = localStorage.getItem('financeiro-app-dados');
     if (salvo) return aplicarMigracoes(JSON.parse(salvo));
-  } catch {}
+  } catch { /* localStorage indisponível ou corrompido → usa dados iniciais */ }
   return dadosIniciais;
 }
 
@@ -140,13 +138,13 @@ export function AppProvider({ children }) {
     setDriveStatus('sincronizando');
     try {
       const dadosDrive = await loadFromDrive();
-      if (dadosDrive) { setDados(dadosDrive); setDriveStatus('conectado'); }
+      if (dadosDrive) { setDados(aplicarMigracoes(dadosDrive)); setDriveStatus('conectado'); }
     } catch { setDriveStatus('erro'); }
   }
 
   // CONTAS
   function adicionarConta(conta) {
-    setDados(d => ({ ...d, contas: [...d.contas, { ...conta, id: Date.now() }] }));
+    setDados(d => ({ ...d, contas: [...d.contas, { ...conta, id: gerarId() }] }));
   }
   function editarConta(id, conta) {
     setDados(d => ({ ...d, contas: d.contas.map(c => c.id === id ? { ...c, ...conta } : c) }));
@@ -157,7 +155,7 @@ export function AppProvider({ children }) {
 
   // CARTÕES
   function adicionarCartao(cartao) {
-    setDados(d => ({ ...d, cartoes: [...d.cartoes, { ...cartao, id: Date.now() }] }));
+    setDados(d => ({ ...d, cartoes: [...d.cartoes, { ...cartao, id: gerarId() }] }));
   }
   function editarCartao(id, cartao) {
     setDados(d => ({ ...d, cartoes: d.cartoes.map(c => c.id === id ? { ...c, ...cartao } : c) }));
@@ -168,40 +166,21 @@ export function AppProvider({ children }) {
 
   // LANÇAMENTOS
   function adicionarLancamento(lanc) {
-    const id = lanc._id || Date.now();
+    const id = lanc._id || gerarId();
+    // eslint-disable-next-line no-unused-vars
     const { _id, ...resto } = lanc;
     setDados(d => ({ ...d, lancamentos: [...d.lancamentos, { ...resto, id }] }));
   }
   // Adiciona várias parcelas de uma vez com IDs únicos garantidos
   function adicionarVariosLancamentos(lista) {
-    const base = Date.now();
-    setDados(d => ({
-      ...d,
-      lancamentos: [
-        ...d.lancamentos,
-        ...lista.map((l, i) => ({ ...l, id: base + i })),
-      ],
-    }));
+    const comIds = lista.map(l => ({ ...l, id: gerarId() }));
+    setDados(d => ({ ...d, lancamentos: [...d.lancamentos, ...comIds] }));
   }
   function editarLancamento(id, lanc) {
     setDados(d => ({ ...d, lancamentos: d.lancamentos.map(l => l.id === id ? { ...l, ...lanc } : l) }));
   }
   function removerLancamento(id) {
     setDados(d => ({ ...d, lancamentos: d.lancamentos.filter(l => l.id !== id) }));
-  }
-  // Remove entradas duplicadas/órfãs com _copia sem id vinculado
-  function limparDuplicatas() {
-    setDados(d => ({
-      ...d,
-      lancamentos: d.lancamentos.filter(l => {
-        // Remove entradas de exceção órfãs (onde o fixo original foi deletado)
-        if (l._excecaoDeId) {
-          const origemExiste = d.lancamentos.some(x => x.id === l._excecaoDeId);
-          return origemExiste;
-        }
-        return true;
-      }),
-    }));
   }
   // Remove este lançamento + todos os futuros do mesmo grupo (parcela >= atual)
   function removerParcelasDoGrupo(grupoId, parcelaAtual) {
@@ -291,58 +270,55 @@ export function AppProvider({ children }) {
     }));
   }
 
-  // Para despesas FIXAS: pago é independente por mês (ex: "2026-06")
-  function togglePagoFixo(id, mesAno) {
+  // Para lançamentos FIXOS: pago é independente por mês (ex: "2026-06").
+  // No mês de criação o status fica no próprio `pago` do lançamento;
+  // nos demais meses, em `pagoPorMes`.
+  function setPagoFixo(id, mesAno, valor) {
     setDados(d => ({
       ...d,
       lancamentos: d.lancamentos.map(l => {
         if (l.id !== id) return l;
-        const pagoPorMes = l.pagoPorMes || {};
-        const atual = pagoPorMes[mesAno] ?? false;
-        return { ...l, pagoPorMes: { ...pagoPorMes, [mesAno]: !atual } };
+        const pagoPorMes = { ...(l.pagoPorMes || {}) };
+        if (mesAno === chaveDaData(l.data)) {
+          delete pagoPorMes[mesAno];
+          return { ...l, pago: valor, pagoPorMes };
+        }
+        return { ...l, pagoPorMes: { ...pagoPorMes, [mesAno]: valor } };
       })
+    }));
+  }
+
+  // Exclui um fixo inteiro (todas as ocorrências) e as edições avulsas ligadas a ele
+  function removerFixo(id) {
+    setDados(d => ({
+      ...d,
+      lancamentos: d.lancamentos.filter(l => l.id !== id && l._excecaoDeId !== id),
     }));
   }
 
   // CATEGORIAS
   function adicionarCategoria(cat) {
-    setDados(d => ({ ...d, categorias: [...d.categorias, { ...cat, id: Date.now() }] }));
+    setDados(d => ({ ...d, categorias: [...d.categorias, { ...cat, id: gerarId() }] }));
   }
 
-  // Calcula saldo atual de cada conta = saldo inicial + lançamentos pagos da conta
-  // Lançamentos de cartão NÃO afetam o saldo da conta (só quando paga a fatura)
-  const contasComSaldo = dados.contas.map(conta => {
-    // Soma transações pagas da conta
-    const movimentos = dados.lancamentos
-      .filter(l => l.contaId === conta.id && l.pago && !l.cartaoId)
-      .reduce((acc, l) => acc + l.valor, 0);
-    // Subtrai faturas de cartão pagas com esta conta
-    const faturasPagas = dados.cartoes.reduce((acc, cartao) => {
-      const fp = cartao.faturasPagas || {};
-      return acc + Object.values(fp).reduce((s, f) => {
-        const info = typeof f === 'object' ? f : { pago: f };
-        if (info.pago && info.contaId === conta.id) return s + (info.valor || 0);
-        return s;
-      }, 0);
-    }, 0);
-    return { ...conta, saldoAtual: (conta.saldo || 0) + movimentos - faturasPagas };
-  });
-
-  const saldoGeral = contasComSaldo.reduce((acc, c) => acc + c.saldoAtual, 0);
-  // Soma dos saldos iniciais (sem transações) — base para o previsto
+  // Saldo realizado de cada conta — regra única em utils/financas.js
+  // (fixos pagos mês a mês, transferências origem→destino, faturas pagas)
+  const { porConta: contasComSaldo, saldoGeral } = calcularSaldos(dados);
+  // Soma dos saldos iniciais (sem transações)
   const saldoInicialTotal = dados.contas.reduce((acc, c) => acc + (c.saldo || 0), 0);
 
   return (
     <AppContext.Provider value={{
       ...dados,
+      dados,
       contas: contasComSaldo,
       saldoGeral,
       adicionarConta, editarConta, removerConta,
       adicionarCartao, editarCartao, removerCartao,
       saldoInicialTotal,
       driveStatus, autenticado, conectarDrive, desconectarDrive, sincronizarDrive,
-      adicionarExcecaoFixo, limparExcecoesFixo, pararFixoNoMes,
-      adicionarLancamento, adicionarVariosLancamentos, editarLancamento, removerLancamento, removerParcelasDoGrupo, togglePago, togglePagoFixo, toggleFaturaPaga, pagarFatura, desfazerFatura,
+      adicionarExcecaoFixo, limparExcecoesFixo, pararFixoNoMes, removerFixo, setPagoFixo,
+      adicionarLancamento, adicionarVariosLancamentos, editarLancamento, removerLancamento, removerParcelasDoGrupo, togglePago, toggleFaturaPaga, pagarFatura, desfazerFatura,
       adicionarCategoria,
     }}>
       {children}
@@ -350,6 +326,7 @@ export function AppProvider({ children }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useApp() {
   return useContext(AppContext);
 }

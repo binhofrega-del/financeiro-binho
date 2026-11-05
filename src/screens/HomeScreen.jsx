@@ -1,58 +1,35 @@
 import { useState } from 'react';
 import { Eye, EyeOff, ChevronRight, TrendingUp, TrendingDown, Plus, CloudOff, Cloud, RefreshCw, Loader } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { formatarMoeda, nomeMes, calcularFaturaCartao } from '../utils/formatters';
+import { formatarMoeda, nomeMes } from '../utils/formatters';
 import ModalLancamento from '../components/ModalLancamento';
 import IconeBanco from '../components/IconeBanco';
+import {
+  hojeISO, mesAnoDaData, inicioDoMes, fimDoMes, resumoPeriodo,
+  faturaAtual, itensDaFatura, totalDosItens, limiteUsado, diasAteVencimento,
+} from '../utils/financas';
 
 export default function HomeScreen({ setAba, irParaFluxo }) {
-  const { contas, cartoes, lancamentos, saldoGeral, driveStatus, conectarDrive, desconectarDrive, sincronizarDrive } = useApp();
+  const { dados, contas, cartoes, lancamentos, saldoGeral, driveStatus, conectarDrive, sincronizarDrive } = useApp();
   const [ocultarSaldo, setOcultarSaldo] = useState(false);
   const [modalAberto, setModalAberto] = useState(false);
 
   const agora = new Date();
-  const mesAtual = agora.getMonth();
-  const anoAtual = agora.getFullYear();
+  const hoje = hojeISO(agora);
+  const { ano: anoAtual, mes: mesAtual } = mesAnoDaData(hoje);
   const hora = agora.getHours();
   const saudacao = hora >= 5 && hora < 12 ? 'Bom dia' : hora >= 12 && hora < 18 ? 'Boa tarde' : 'Boa noite';
 
-  // Fatura atual = ciclo de cobrança atualmente aberto (baseado no dia de fechamento do cartão)
-  function faturaCartao(cartaoId) {
-    const cartao = cartoes.find(c => c.id === cartaoId);
-    if (!cartao) return 0;
-    const hojeStr = agora.toISOString().slice(0, 10);
-    const { faturaMes, faturaAno } = calcularFaturaCartao(hojeStr, cartao.diaFechamento);
-    const inicioFatura = new Date(faturaAno, faturaMes, 1);
-    const fimFatura = new Date(faturaAno, faturaMes + 1, 0, 23, 59, 59);
-    return lancamentos
-      .filter(l => {
-        if (l.cartaoId !== cartaoId || l.tipo !== 'despesa') return false;
-        if (l.faturaMes != null) return l.faturaMes === faturaMes && l.faturaAno === faturaAno;
-        const d = new Date(l.data + 'T00:00:00');
-        return d >= inicioFatura && d <= fimFatura;
-      })
-      .reduce((a, l) => a + Math.abs(l.valor), 0);
+  // Fatura atual = ciclo de cobrança aberto hoje (regra única em utils/financas.js)
+  function faturaCartao(cartao) {
+    return totalDosItens(itensDaFatura(lancamentos, cartao, faturaAtual(cartao, hoje)));
   }
 
-  // Resumo do mês
-  const lancMes = lancamentos.filter(l => {
-    const d = new Date(l.data + 'T00:00:00');
-    return d.getMonth() === mesAtual && d.getFullYear() === anoAtual;
-  });
-  // Entradas: só conta (sem cartão)
-  const entradas = lancMes.filter(l => !l.cartaoId && l.tipo === 'receita').reduce((a, l) => a + l.valor, 0);
-  // Saídas: conta + gastos confirmados no cartão do mês (incluindo fixos do cartão)
-  const inicioMes = new Date(anoAtual, mesAtual, 1);
-  const fimMes = new Date(anoAtual, mesAtual + 1, 0, 23, 59, 59);
-  const saidasConta = lancMes.filter(l => !l.cartaoId && l.tipo === 'despesa').reduce((a, l) => a + Math.abs(l.valor), 0);
-  const saidasCartao = lancamentos.filter(l => {
-    if (!l.cartaoId || l.tipo !== 'despesa') return false;
-    const d = new Date(l.data + 'T00:00:00');
-    if (d >= inicioMes && d <= fimMes) return true;
-    if (l.fixo && d <= fimMes) return true;
-    return false;
-  }).reduce((a, l) => a + Math.abs(l.valor), 0);
-  const saidas = saidasConta + saidasCartao;
+  // Resumo do mês — MESMA conta do Fluxo no modo "mês" sem filtros
+  const mesMA = { ano: anoAtual, mes: mesAtual };
+  const resumo = resumoPeriodo(dados, inicioDoMes(mesMA), fimDoMes(mesMA));
+  const entradas = resumo.entradasPrev;
+  const saidas = resumo.saidasPrev;
 
   const val = (v) => ocultarSaldo ? '••••' : formatarMoeda(v);
 
@@ -144,13 +121,11 @@ export default function HomeScreen({ setAba, irParaFluxo }) {
               <button onClick={() => setAba('cartoes')} style={linkBtn}>Ver todos <ChevronRight size={14} /></button>
             </div>
             {cartoes.map(cartao => {
-              const fatura = faturaCartao(cartao.id);
-              const disponivel = Math.max(cartao.limite - fatura, 0);
-              const pct = Math.min((fatura / cartao.limite) * 100, 100);
-              const hoje = agora.getDate();
-              const diasVenc = cartao.diaVencimento >= hoje
-                ? cartao.diaVencimento - hoje
-                : (30 - hoje + cartao.diaVencimento);
+              const fatura = faturaCartao(cartao);
+              const usado = limiteUsado(cartao, lancamentos, hoje);
+              const disponivel = Math.max(cartao.limite - usado, 0);
+              const pct = cartao.limite > 0 ? Math.min(Math.max((usado / cartao.limite) * 100, 0), 100) : 0;
+              const diasVenc = diasAteVencimento(cartao, hoje);
 
               return (
                 // Fix 2: clicar no cartão vai para a aba Cartões
@@ -182,7 +157,7 @@ export default function HomeScreen({ setAba, irParaFluxo }) {
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0 4px', fontSize: 12, color: '#888' }}>
                     <span>Vencimento: dia {cartao.diaVencimento}</span>
                     <span style={{ color: diasVenc <= 5 ? '#dc2626' : '#d97706', fontWeight: 600 }}>
-                      ⚠ {diasVenc} dias
+                      {diasVenc === 0 ? '⚠ Vence hoje' : `⚠ ${diasVenc} dias`}
                     </span>
                   </div>
                 </div>
@@ -227,5 +202,6 @@ const card = { background: 'white', borderRadius: 16, padding: 16, boxShadow: '0
 const secTitle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, fontSize: 15, fontWeight: 700, color: '#111' };
 const linkBtn = { display: 'flex', alignItems: 'center', gap: 2, background: 'none', border: 'none', color: '#16a34a', fontSize: 12, fontWeight: 600, cursor: 'pointer' };
 const rowStyle = { display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid #f3f4f6' };
+// eslint-disable-next-line no-unused-vars
 const icone = { width: 38, height: 38, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: 12, flexShrink: 0 };
 const resumoBox = { flex: 1, background: '#f9fafb', borderRadius: 12, padding: 12, textAlign: 'center' };

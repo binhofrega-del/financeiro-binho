@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext';
 import { formatarMoeda } from '../utils/formatters';
 
 export default function ModalPagarFatura({ fatura, onFechar }) {
-  const { contas, cartoes, pagarFatura, desfazerFatura } = useApp();
+  const { contas, pagarFatura, desfazerFatura } = useApp();
   const [contaSelecionada, setContaSelecionada] = useState(contas[0]?.id || null);
 
   // Se já está paga, pergunta se quer desfazer

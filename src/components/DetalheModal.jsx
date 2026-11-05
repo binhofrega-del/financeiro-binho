@@ -5,7 +5,7 @@ import { formatarMoeda } from '../utils/formatters';
 import { emojisCategoria } from '../utils/formatters';
 
 export default function DetalheModal({ lanc, onFechar, onEditar, onTogglePago, onExcluir }) {
-  const { togglePago, removerLancamento, removerParcelasDoGrupo } = useApp();
+  const { togglePago, setPagoFixo, removerLancamento, removerParcelasDoGrupo } = useApp();
   const [confirmarExclusao, setConfirmarExclusao] = useState(false);
 
   const isReceita = lanc.tipo === 'receita';
@@ -17,9 +17,11 @@ export default function DetalheModal({ lanc, onFechar, onEditar, onTogglePago, o
   const emoji = emojisCategoria[lanc.categoria] || '📌';
 
   function duplicar() {
-    const { id, ...resto } = lanc;
+    // Cópia "limpa": sem vínculo com fixo, grupo de parcelas ou exceções do original
+    // eslint-disable-next-line no-unused-vars
+    const { id, _fixoMesAno, _k, pagoPorMes, excecoesMeses, fixoFimData, _excecaoDeId, grupoId, parcela, totalParcelas, ...resto } = lanc;
     onFechar();
-    onEditar({ ...resto, pago: false, _copia: true });
+    onEditar({ ...resto, parcelado: false, pago: false, _copia: true });
   }
 
   function excluir() {
@@ -48,8 +50,11 @@ export default function DetalheModal({ lanc, onFechar, onEditar, onTogglePago, o
   }
 
   function marcarPago() {
-    if (onTogglePago) onTogglePago();
-    else { togglePago(lanc.id); onFechar(); }
+    if (onTogglePago) { onTogglePago(); return; }
+    // Fixo: o pago é de cada mês
+    if (lanc._fixoMesAno) setPagoFixo(lanc.id, lanc._fixoMesAno, !lanc.pago);
+    else togglePago(lanc.id);
+    onFechar();
   }
 
   const [ano, mes, dia] = lanc.data.split('-');

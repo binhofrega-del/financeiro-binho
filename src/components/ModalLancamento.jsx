@@ -1,9 +1,13 @@
 import { useState } from 'react';
 import { X, Check, ChevronDown } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { calcularFaturaCartao, nomeMes } from '../utils/formatters';
+import { nomeMes } from '../utils/formatters';
+import {
+  hojeISO, gerarId, faturaDaCompra, somarMeses, difMeses, chaveDaData,
+  dividirEmParcelas, dataDaParcela, PERIODOS_PARCELA,
+} from '../utils/financas';
 
-const hoje = () => new Date().toISOString().slice(0, 10);
+const hoje = () => hojeISO();
 
 // Converte centavos (inteiro) para string formatada "1.234,56"
 function centavosParaDisplay(centavos) {
@@ -14,11 +18,6 @@ function centavosParaDisplay(centavos) {
   return `${reais},${cents}`;
 }
 
-// Converte centavos para número float
-function centavosParaFloat(centavos) {
-  return centavos / 100;
-}
-
 const vazio = {
   descricao: '', valor: '', data: hoje(), tipo: 'despesa',
   categoria: 'Outros', contaId: '', cartaoId: '',
@@ -26,7 +25,7 @@ const vazio = {
   fixo: false, parcelado: false, parcela: 1, totalParcelas: 2, pago: false,
 };
 
-export default function ModalLancamento({ editando, onFechar, cartaoPreSelecionado }) {
+export default function ModalLancamento({ editando, onFechar, cartaoPreSelecionado, aoSalvar }) {
   const { contas, cartoes, categorias, adicionarLancamento, adicionarVariosLancamentos, editarLancamento } = useApp();
   const [valorCentavos, setValorCentavos] = useState(
     editando ? Math.round(Math.abs(editando.valor) * 100) : 0
@@ -36,13 +35,11 @@ export default function ModalLancamento({ editando, onFechar, cartaoPreSeleciona
   // Calcula mês da fatura baseado no cartão e data
   function calcularMesFatura(cartaoId, data) {
     const cartao = cartoes.find(c => c.id === Number(cartaoId));
-    if (!cartao) return { faturaMes: new Date().getMonth(), faturaAno: new Date().getFullYear() };
-    return calcularFaturaCartao(data, cartao.diaFechamento);
+    const f = faturaDaCompra(data || hoje(), cartao ? cartao.diaFechamento : 31);
+    return { faturaMes: f.mes, faturaAno: f.ano };
   }
 
-  const faturaInicial = primeiroCartaoId
-    ? calcularMesFatura(primeiroCartaoId, hoje())
-    : { faturaMes: new Date().getMonth(), faturaAno: new Date().getFullYear() };
+  const faturaInicial = calcularMesFatura(editando?.cartaoId || primeiroCartaoId, editando?.data || hoje());
 
   const [faturaSel, setFaturaSel] = useState(
     editando?.faturaMes != null
@@ -54,55 +51,80 @@ export default function ModalLancamento({ editando, onFechar, cartaoPreSeleciona
     ? { ...editando, valor: String(Math.abs(editando.valor)) }
     : { ...vazio, contaId: contas[0]?.id || null, contaOrigemId: contas[0]?.id || null, contaDestinoId: contas[1]?.id || contas[0]?.id || null, cartaoId: primeiroCartaoId }
   );
-  const [abaForma, setAbaForma] = useState(editando?.cartaoId ? 'cartao' : cartaoPreSelecionado ? 'cartao' : 'conta');
+  const [abaForma, setAbaForma] = useState(editando ? (editando.cartaoId ? 'cartao' : 'conta') : cartaoPreSelecionado ? 'cartao' : 'conta');
   const [erros, setErros] = useState({});
+  const [periodoParc, setPeriodoParc] = useState('Meses');
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  // Mudou a data ou o cartão → recalcula a fatura automática
+  function setData(v) {
+    set('data', v);
+    if (v) setFaturaSel(calcularMesFatura(form.cartaoId || primeiroCartaoId, v));
+  }
+  function setCartao(id) {
+    set('cartaoId', id);
+    setFaturaSel(calcularMesFatura(id, form.data));
+  }
 
   function salvar() {
-    // Fix 1: Validação com campos em vermelho
+    // Validação com campos em vermelho
     const novosErros = {};
     if (!form.descricao.trim()) novosErros.descricao = true;
+    if (form.tipo === 'transferencia' && String(form.contaOrigemId) === String(form.contaDestinoId)) novosErros.destino = true;
     if (Object.keys(novosErros).length > 0) { setErros(novosErros); return; }
     setErros({});
 
-    // Fix 2: Valor por parcela = total / número de parcelas
-    const valorTotal = centavosParaFloat(valorCentavos);
-    const valorNum = form.parcelado && !editando
-      ? valorTotal / (form.totalParcelas || 1)
-      : valorTotal;
-    const cartaoIdFinal = form.tipo === 'transferencia' ? null : abaForma === 'cartao' ? (form.cartaoId || primeiroCartaoId || null) : null;
-    // Recalcula mês da fatura na hora de salvar
-    const faturaFinal = cartaoIdFinal ? calcularMesFatura(cartaoIdFinal, form.data) : {};
+    const sinal = form.tipo === 'despesa' ? -1 : 1;
+    const ehTransf = form.tipo === 'transferencia';
+    const cartaoIdFinal = ehTransf ? null : abaForma === 'cartao' ? (form.cartaoId || primeiroCartaoId || null) : null;
+    const cartao = cartoes.find(c => c.id === Number(cartaoIdFinal));
+    const ehNovoParcelado = form.parcelado && (!editando || editando._copia);
+
+    // eslint-disable-next-line no-unused-vars
+    const { _copia, _criarNovoFixo, _fixoMesAno, _k, ...formLimpo } = form;
     const base = {
-      ...form,
-      valor: form.tipo === 'despesa' ? -Math.abs(valorNum) : Math.abs(valorNum),
-      contaId: form.tipo === 'transferencia' ? form.contaOrigemId : abaForma === 'conta' ? (form.contaId || null) : null,
+      ...formLimpo,
+      valor: sinal * valorCentavos / 100,
+      contaId: ehTransf ? form.contaOrigemId : abaForma === 'conta' ? (form.contaId || null) : null,
+      contaDestinoId: ehTransf ? form.contaDestinoId : null,
       cartaoId: cartaoIdFinal,
-      pago: cartaoIdFinal ? true : form.pago,
-      // Mês da fatura: usa seleção manual se diferente do calculado
-      ...(cartaoIdFinal ? { faturaMes: faturaSel.faturaMes, faturaAno: faturaSel.faturaAno } : {}),
+      pago: cartaoIdFinal ? true : !!form.pago,
     };
+    if (cartaoIdFinal) { base.faturaMes = faturaSel.faturaMes; base.faturaAno = faturaSel.faturaAno; }
+    else { delete base.faturaMes; delete base.faturaAno; }
+    // Fixo: o status do mês de criação fica em `pago` (o formulário manda)
+    if (base.fixo && base.pagoPorMes) {
+      const ppm = { ...base.pagoPorMes };
+      delete ppm[chaveDaData(base.data)];
+      base.pagoPorMes = ppm;
+    }
+
+    aoSalvar?.();
 
     if (editando && editando.id && !editando._copia && !editando._criarNovoFixo) {
       editarLancamento(editando.id, base);
-    } else if (form.parcelado && !editando) {
-      // Gera todas as parcelas de uma vez com IDs únicos e grupoId compartilhado
+    } else if (ehNovoParcelado) {
+      // Valor digitado = TOTAL; divide em centavos exatos (sobra vai na 1ª parcela)
       const total = form.totalParcelas || 2;
-      const grupoId = Date.now(); // ID único para identificar o grupo de parcelas
-      const parcelas = Array.from({ length: total }, (_, i) => {
-        const dataBase = new Date(form.data + 'T00:00:00');
-        dataBase.setMonth(dataBase.getMonth() + i);
-        const dataStr = dataBase.toISOString().slice(0, 10);
-        const faturaParc = cartaoIdFinal ? calcularMesFatura(cartaoIdFinal, dataStr) : {};
+      const valores = dividirEmParcelas(valorCentavos, total);
+      const grupoId = gerarId();
+      // Se a 1ª fatura foi escolhida manualmente, desloca todas as parcelas igual
+      const delta = cartao
+        ? difMeses(faturaDaCompra(base.data, cartao.diaFechamento), { ano: faturaSel.faturaAno, mes: faturaSel.faturaMes })
+        : 0;
+      const parcelas = valores.map((v, i) => {
+        const data = dataDaParcela(base.data, i, periodoParc);
+        const fat = cartao ? somarMeses(faturaDaCompra(data, cartao.diaFechamento), delta) : null;
         return {
           ...base,
-          data: dataStr,
+          fixo: false,
+          valor: sinal * v,
+          data,
           parcela: i + 1,
           totalParcelas: total,
           grupoId,
-          pago: i === 0 ? base.pago : false,
-          ...(cartaoIdFinal ? { faturaMes: faturaParc.faturaMes, faturaAno: faturaParc.faturaAno } : {}),
+          pago: cartao ? true : (i === 0 ? base.pago : false),
+          ...(fat ? { faturaMes: fat.mes, faturaAno: fat.ano } : {}),
         };
       });
       adicionarVariosLancamentos(parcelas);
@@ -185,7 +207,7 @@ export default function ModalLancamento({ editando, onFechar, cartaoPreSeleciona
           {/* Data */}
           <div style={{ marginBottom: 14 }}>
             <label style={lbl}>Data</label>
-            <input type="date" value={form.data} onChange={e => set('data', e.target.value)} style={inp} />
+            <input type="date" value={form.data} onChange={e => setData(e.target.value)} style={inp} />
           </div>
 
           {/* Categoria */}
@@ -224,12 +246,13 @@ export default function ModalLancamento({ editando, onFechar, cartaoPreSeleciona
                 <label style={lbl}>Conta Destino</label>
                 <div style={{ position: 'relative' }}>
                   <select value={form.contaDestinoId}
-                    onChange={e => set('contaDestinoId', Number(e.target.value))}
-                    style={{ ...inp, appearance: 'none', paddingRight: 36 }}>
+                    onChange={e => { set('contaDestinoId', Number(e.target.value)); setErros(er => ({ ...er, destino: false })); }}
+                    style={{ ...inp, appearance: 'none', paddingRight: 36, border: erros.destino ? '2px solid #dc2626' : inp.border }}>
                     {contas.map(c => <option key={c.id} value={c.id}>{c.icone} {c.nome}</option>)}
                   </select>
                   <ChevronDown size={16} color="#888" style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
                 </div>
+                {erros.destino && <p style={{ color: '#dc2626', fontSize: 11, marginTop: 4, fontWeight: 600 }}>⚠ Escolha uma conta diferente da origem</p>}
               </div>
             </>
           ) : (
@@ -240,9 +263,7 @@ export default function ModalLancamento({ editando, onFechar, cartaoPreSeleciona
                   <button key={f} onClick={() => {
                     setAbaForma(f);
                     // Garante que ao mudar para cartão, o primeiro cartão é selecionado
-                    if (f === 'cartao' && !form.cartaoId && primeiroCartaoId) {
-                      set('cartaoId', primeiroCartaoId);
-                    }
+                    if (f === 'cartao') setCartao(form.cartaoId || primeiroCartaoId);
                   }}
                     style={{ flex: 1, padding: '8px', borderRadius: 8, border: `1.5px solid ${abaForma === f ? '#16a34a' : '#e5e7eb'}`, background: abaForma === f ? '#dcfce7' : 'white', color: abaForma === f ? '#16a34a' : '#888', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
                     {f === 'conta' ? '🏦 Conta' : '💳 Cartão'}
@@ -251,7 +272,7 @@ export default function ModalLancamento({ editando, onFechar, cartaoPreSeleciona
               </div>
               <div style={{ position: 'relative' }}>
                 <select value={abaForma === 'conta' ? form.contaId : form.cartaoId}
-                  onChange={e => abaForma === 'conta' ? set('contaId', Number(e.target.value)) : set('cartaoId', Number(e.target.value))}
+                  onChange={e => abaForma === 'conta' ? set('contaId', Number(e.target.value)) : setCartao(Number(e.target.value))}
                   style={{ ...inp, appearance: 'none', paddingRight: 36 }}>
                   {abaForma === 'conta'
                     ? contas.map(c => <option key={c.id} value={c.id}>{c.icone} {c.nome}</option>)
@@ -271,20 +292,28 @@ export default function ModalLancamento({ editando, onFechar, cartaoPreSeleciona
               <SeletorParcelas
                 total={form.totalParcelas}
                 onTotal={v => set('totalParcelas', v)}
-                valorTotal={centavosParaFloat(valorCentavos)}
+                periodo={periodoParc}
+                onPeriodo={setPeriodoParc}
+                valorCentavos={valorCentavos}
+                editando={!!editando && !editando._copia}
               />
             )}
           </div>
 
           {/* Seletor de mês da fatura — só para cartão */}
           {abaForma === 'cartao' && form.tipo !== 'transferencia' && (() => {
-            const meses = [];
-            const hoje = new Date();
-            for (let i = -1; i <= 3; i++) {
-              const d = new Date(hoje.getFullYear(), hoje.getMonth() + i, 1);
-              meses.push({ mes: d.getMonth(), ano: d.getFullYear(), label: `${nomeMes(d.getMonth())} ${d.getFullYear()}` });
-            }
             const autoFatura = calcularMesFatura(form.cartaoId || primeiroCartaoId, form.data);
+            const auto = { ano: autoFatura.faturaAno, mes: autoFatura.faturaMes };
+            const meses = [];
+            for (let i = -2; i <= 4; i++) {
+              const d = somarMeses(auto, i);
+              meses.push({ mes: d.mes, ano: d.ano, label: `${nomeMes(d.mes)} ${d.ano}` });
+            }
+            // garante que a fatura já salva aparece na lista, mesmo se estiver longe
+            if (!meses.some(m => m.mes === faturaSel.faturaMes && m.ano === faturaSel.faturaAno)) {
+              meses.push({ mes: faturaSel.faturaMes, ano: faturaSel.faturaAno, label: `${nomeMes(faturaSel.faturaMes)} ${faturaSel.faturaAno}` });
+              meses.sort((a, b) => (a.ano * 12 + a.mes) - (b.ano * 12 + b.mes));
+            }
             return (
               <div style={{ marginBottom: 14 }}>
                 <label style={lbl}>Mês da fatura</label>
@@ -311,17 +340,17 @@ export default function ModalLancamento({ editando, onFechar, cartaoPreSeleciona
             );
           })()}
 
-          {/* Status pago — só para conta, cartão é sempre confirmado */}
-          {abaForma === 'conta' && form.tipo !== 'transferencia' && (
+          {/* Status pago — conta e transferência; cartão é sempre confirmado */}
+          {(abaForma === 'conta' || form.tipo === 'transferencia') && (
             <div style={{ background: '#f9fafb', borderRadius: 14, padding: '4px 14px', marginBottom: 20 }}>
               <ToggleRow
-                label={form.tipo === 'receita' ? 'Já recebido?' : 'Já pago?'}
+                label={form.tipo === 'transferencia' ? 'Já transferido?' : form.tipo === 'receita' ? 'Já recebido?' : 'Já pago?'}
                 checked={form.pago}
                 onChange={v => set('pago', v)}
               />
             </div>
           )}
-          {abaForma === 'cartao' && (
+          {abaForma === 'cartao' && form.tipo !== 'transferencia' && (
             <div style={{ background: '#dbeafe', borderRadius: 14, padding: '10px 14px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 16 }}>💳</span>
               <p style={{ fontSize: 13, color: '#1d4ed8', fontWeight: 600 }}>Compra confirmada — lançada na fatura do cartão</p>
@@ -338,14 +367,23 @@ export default function ModalLancamento({ editando, onFechar, cartaoPreSeleciona
   );
 }
 
-const PERIODOS_PARC = ['Semanas', 'Quinzenas', 'Meses', 'Bimestres', 'Trimestres', 'Semestres', 'Anos'];
+const PERIODOS_PARC = Object.keys(PERIODOS_PARCELA);
 
-function SeletorParcelas({ total, onTotal, valorTotal }) {
-  const [tipoPeriodo, setTipoPeriodo] = useState('Meses');
+function SeletorParcelas({ total, onTotal, periodo, onPeriodo, valorCentavos, editando }) {
+  const valores = valorCentavos > 0 ? dividirEmParcelas(valorCentavos, total) : [];
+  const fmt = (v) => v.toFixed(2).replace('.', ',');
+
+  if (editando) {
+    return (
+      <div style={{ padding: '12px 0 4px' }}>
+        <p style={{ fontSize: 12, color: '#888' }}>Editando só esta parcela. O valor acima é o desta parcela.</p>
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: '12px 0 4px' }}>
-      <p style={{ fontSize: 12, color: '#888', fontWeight: 600, marginBottom: 12 }}>Despesa parcelada</p>
+      <p style={{ fontSize: 12, color: '#888', fontWeight: 600, marginBottom: 12 }}>Despesa parcelada — informe o valor TOTAL acima</p>
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12 }}>
         {/* Seletor de quantidade */}
@@ -359,7 +397,7 @@ function SeletorParcelas({ total, onTotal, valorTotal }) {
 
         {/* Seletor de período */}
         <div style={{ flex: 1, position: 'relative' }}>
-          <select value={tipoPeriodo} onChange={e => setTipoPeriodo(e.target.value)}
+          <select value={periodo} onChange={e => onPeriodo(e.target.value)}
             style={{ width: '100%', border: '1.5px solid #e5e7eb', borderRadius: 12, padding: '11px 32px 11px 14px', fontSize: 15, fontWeight: 600, outline: 'none', background: 'white', appearance: 'none', color: '#111', cursor: 'pointer' }}>
             {PERIODOS_PARC.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
@@ -370,8 +408,8 @@ function SeletorParcelas({ total, onTotal, valorTotal }) {
       {/* Atalhos rápidos */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
         {[2, 3, 6, 10, 12, 18, 24].map(n => (
-          <button key={n} onClick={() => { onTotal(n); setTipoPeriodo('Meses'); }}
-            style={{ padding: '5px 12px', borderRadius: 20, border: `1.5px solid ${total === n && tipoPeriodo === 'Meses' ? '#16a34a' : '#e5e7eb'}`, background: total === n && tipoPeriodo === 'Meses' ? '#dcfce7' : 'white', color: total === n && tipoPeriodo === 'Meses' ? '#16a34a' : '#666', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
+          <button key={n} onClick={() => { onTotal(n); onPeriodo('Meses'); }}
+            style={{ padding: '5px 12px', borderRadius: 20, border: `1.5px solid ${total === n && periodo === 'Meses' ? '#16a34a' : '#e5e7eb'}`, background: total === n && periodo === 'Meses' ? '#dcfce7' : 'white', color: total === n && periodo === 'Meses' ? '#16a34a' : '#666', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
             {n}x
           </button>
         ))}
@@ -380,8 +418,10 @@ function SeletorParcelas({ total, onTotal, valorTotal }) {
       {/* Resumo */}
       <div style={{ background: '#dcfce7', borderRadius: 10, padding: '8px 12px', textAlign: 'center' }}>
         <p style={{ fontSize: 13, color: '#16a34a', fontWeight: 600 }}>
-          📋 {total}x em {tipoPeriodo.toLowerCase()}
-          {valorTotal > 0 && ` — R$ ${(valorTotal / total).toFixed(2).replace('.', ',')} por parcela`}
+          📋 {total}x em {periodo.toLowerCase()}
+          {valores.length > 0 && (valores[0] === valores[valores.length - 1]
+            ? ` — R$ ${fmt(valores[0])} por parcela`
+            : ` — 1ª de R$ ${fmt(valores[0])} e ${total - 1}x de R$ ${fmt(valores[1])}`)}
         </p>
       </div>
     </div>

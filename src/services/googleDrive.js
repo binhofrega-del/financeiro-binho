@@ -100,17 +100,17 @@ export function signIn() {
 }
 
 export function signOut() {
-  const token = window.gapi.client?.getToken();
+  const token = window.gapi?.client?.getToken?.();
   if (token) {
     window.google.accounts.oauth2.revoke(token.access_token, () => {});
-    window.gapi.client.setToken('');
+    window.gapi?.client?.setToken('');
   }
   limparToken();
   onStatusChange?.('desconectado');
 }
 
 export function isSignedIn() {
-  const token = window.gapi.client?.getToken();
+  const token = window.gapi?.client?.getToken?.();
   return !!(token && token.access_token);
 }
 

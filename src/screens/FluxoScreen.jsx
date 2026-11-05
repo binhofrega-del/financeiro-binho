@@ -1,147 +1,141 @@
 import { useState, useMemo } from 'react';
-import { Plus, ChevronLeft, ChevronRight, Check, Repeat, Layers, MoreVertical, Printer } from 'lucide-react';
+import { Plus, ChevronLeft, ChevronRight, Repeat, Layers, MoreVertical, Printer } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { formatarMoeda, nomeMes, emojisCategoria } from '../utils/formatters';
-import ModalLancamento from '../components/ModalLancamento';
 import DetalheModal from '../components/DetalheModal';
 import FiltroModal from '../components/FiltroModal';
 import ModalPagarFatura from '../components/ModalPagarFatura';
 import IconeBanco from '../components/IconeBanco';
-import ModalEditarFixo from '../components/ModalEditarFixo';
-import ModalExcluirFixo from '../components/ModalExcluirFixo';
+import { useAcoesLancamento } from '../hooks/useAcoesLancamento';
+import {
+  hojeISO, parseISO, addDias, intervaloDoPeriodo, mesAnoDaData, inicioDoMes, somarMeses,
+  lancamentosContaNoPeriodo, faturasNoPeriodo, totaisDe, calcularSaldos, saldoPrevisto,
+} from '../utils/financas';
 
 const filtroInicial = { tipos: [], situacao: [], contaIds: [], cartaoIds: [], categorias: [], periodo: 'mes', busca: '' };
 
-function toStr(d) { return d.toISOString().slice(0,10); }
-function addDias(d, n) { const r=new Date(d); r.setDate(r.getDate()+n); return r; }
-
-// Retorna o dia correto de um lançamento fixo no mês alvo
-// Se foi criado no último dia do mês, usa último dia do mês alvo
-function diaFixoNoMes(dataOriginal, anoTarget, mesTarget) {
-  const d = new Date(dataOriginal+'T00:00:00');
-  const diaOrig = d.getDate();
-  const ultimoOrig = new Date(d.getFullYear(), d.getMonth()+1, 0).getDate();
-  if (diaOrig === ultimoOrig) {
-    // Era último dia → usar último dia do mês alvo
-    return new Date(anoTarget, mesTarget+1, 0).getDate();
-  }
-  return diaOrig;
-}
-
-// Calcula início/fim baseado no modo de período e data de referência
-function calcularIntervalo(modo, dataRef) {
-  const d = new Date(dataRef+'T00:00:00');
-  let inicio, fim;
-  if (modo === 'dia') {
-    inicio = new Date(d); inicio.setHours(0,0,0,0);
-    fim = new Date(d); fim.setHours(23,59,59,999);
-  } else if (modo === 'semana') {
-    // Semana: segunda a domingo
-    const diaSemana = d.getDay(); // 0=dom,1=seg,...
-    const diffSeg = diaSemana === 0 ? -6 : 1 - diaSemana;
-    inicio = addDias(d, diffSeg); inicio.setHours(0,0,0,0);
-    fim = addDias(inicio, 6); fim.setHours(23,59,59,999);
-  } else if (modo === 'mes') {
-    inicio = new Date(d.getFullYear(), d.getMonth(), 1);
-    fim = new Date(d.getFullYear(), d.getMonth()+1, 0, 23,59,59);
-  } else if (modo === 'personalizado') {
-    // dataRef = 'inicio|fim'
-    const [ini, f] = dataRef.split('|');
-    inicio = new Date(ini+'T00:00:00');
-    fim = new Date(f+'T23:59:59');
-  }
-  return { inicio, fim };
-}
+function primeiroDoMesAtual() { return inicioDoMes(mesAnoDaData(hojeISO())); }
+const ddmm = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+const escapar = (t) => String(t ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 function tituloPeriodo(modo, dataRef) {
   if (modo === 'dia') {
-    const d = new Date(dataRef+'T00:00:00');
-    const dias = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
-    return `${dias[d.getDay()]}, ${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
-  }
-  if (modo === 'semana') {
-    const { inicio, fim } = calcularIntervalo('semana', dataRef);
-    return `${String(inicio.getDate()).padStart(2,'0')}/${String(inicio.getMonth()+1).padStart(2,'0')} – ${String(fim.getDate()).padStart(2,'0')}/${String(fim.getMonth()+1).padStart(2,'0')}`;
+    const dias = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+    return `${dias[parseISO(dataRef).getDay()]}, ${ddmm(dataRef)}`;
   }
   if (modo === 'mes') {
-    const d = new Date(dataRef+'T00:00:00');
-    return `${nomeMes(d.getMonth())} ${d.getFullYear()}`;
+    const { ano, mes } = mesAnoDaData(dataRef);
+    return `${nomeMes(mes)} ${ano}`;
   }
-  if (modo === 'personalizado') {
-    const [ini, f] = dataRef.split('|');
-    return `${ini.slice(8,10)}/${ini.slice(5,7)} – ${f.slice(8,10)}/${f.slice(5,7)}`;
-  }
-  return '';
+  const { inicio, fim } = intervaloDoPeriodo(modo, dataRef);
+  return `${ddmm(inicio)} – ${ddmm(fim)}`;
 }
 
 function navegar(modo, dataRef, dir) {
-  const d = new Date(dataRef+'T00:00:00');
-  if (modo === 'dia') return toStr(addDias(d, dir));
-  if (modo === 'semana') return toStr(addDias(d, dir*7));
-  if (modo === 'mes') {
-    d.setMonth(d.getMonth() + dir);
-    return toStr(new Date(d.getFullYear(), d.getMonth(), 1));
-  }
+  if (modo === 'dia') return addDias(dataRef, dir);
+  if (modo === 'semana') return addDias(dataRef, dir * 7);
+  if (modo === 'mes') return inicioDoMes(somarMeses(mesAnoDaData(dataRef), dir));
   return dataRef;
 }
 
 export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
-  const { lancamentos, cartoes, saldoGeral, saldoInicialTotal, togglePago, togglePagoFixo, toggleFaturaPaga, removerLancamento } = useApp();
-  const hoje = toStr(new Date());
+  const { dados, lancamentos, cartoes, contas } = useApp();
+  const hoje = hojeISO();
   const [modo, setModo] = useState('mes');           // dia | semana | mes | personalizado
-  const [dataRef, setDataRef] = useState(toStr(new Date(new Date().getFullYear(), new Date().getMonth(), 1)));
+  const [dataRef, setDataRef] = useState(primeiroDoMesAtual());
   const [periodoDropdown, setPeriodoDropdown] = useState(false);
   const [showCustom, setShowCustom] = useState(false);
   const [customIni, setCustomIni] = useState('');
   const [customFim, setCustomFim] = useState('');
-  const [modalAberto, setModalAberto] = useState(false);
-  const [editando, setEditando] = useState(null);
   const [detalhe, setDetalhe] = useState(null);
   const [filtroAberto, setFiltroAberto] = useState(false);
   const [faturaParaPagar, setFaturaParaPagar] = useState(null);
-  const [confirmarEditarFixo, setConfirmarEditarFixo] = useState(null);
-  const [confirmarExcluirFixo, setConfirmarExcluirFixo] = useState(null);
   const [menuAberto, setMenuAberto] = useState(false);
   const [filtros, setFiltros] = useState(filtroVindoDaHome ? { ...filtroInicial, ...filtroVindoDaHome } : filtroInicial);
+  const acoes = useAcoesLancamento();
 
   const temFiltroAtivo = filtros.tipos.length > 0 || filtros.situacao.length > 0 ||
     filtros.contaIds.length > 0 || filtros.cartaoIds.length > 0 ||
     filtros.categorias.length > 0 || filtros.busca;
 
-  // Para modo personalizado, dataRef é 'ini|fim' — usa só a data inicial
-  const dataRefBase = modo === 'personalizado' ? dataRef.split('|')[0] : dataRef;
-  const mesAtual = new Date(dataRefBase+'T00:00:00').getMonth();
-  const anoAtual = new Date(dataRefBase+'T00:00:00').getFullYear();
+  const { inicio, fim } = useMemo(() => intervaloDoPeriodo(modo, dataRef), [modo, dataRef]);
 
-  const { adicionarLancamento, adicionarExcecaoFixo, limparExcecoesFixo, pararFixoNoMes, removerLancamento: removLanc } = useApp();
+  // Lançamentos de conta no período (fixos expandidos) — regra em utils/financas.js
+  const lancFiltrados = useMemo(() => {
+    let lista = lancamentosContaNoPeriodo(lancamentos, inicio, fim);
+    if (filtros.busca) { const b = filtros.busca.toLowerCase(); lista = lista.filter(l => (l.descricao || '').toLowerCase().includes(b)); }
+    if (filtros.tipos.length > 0) lista = lista.filter(l => {
+      if (filtros.tipos.includes('Receitas') && l.tipo === 'receita') return true;
+      if (filtros.tipos.includes('Despesas') && l.tipo === 'despesa') return true;
+      if (filtros.tipos.includes('Transferências') && l.tipo === 'transferencia') return true;
+      if (filtros.tipos.includes('Lançamentos fixos') && l.fixo) return true;
+      if (filtros.tipos.includes('Lançamentos parcelados') && l.parcelado) return true;
+      return false;
+    });
+    if (filtros.situacao.length > 0) lista = lista.filter(l => {
+      if (filtros.situacao.includes('Resolvido') && l.pago) return true;
+      if (filtros.situacao.includes('Pendente') && !l.pago) return true;
+      return false;
+    });
+    // Transferência aparece tanto na conta de origem quanto na de destino
+    if (filtros.contaIds.length > 0) lista = lista.filter(l => filtros.contaIds.includes(l.contaId) || filtros.contaIds.includes(l.contaDestinoId));
+    if (filtros.cartaoIds.length > 0) lista = lista.filter(l => filtros.cartaoIds.includes(l.cartaoId));
+    if (filtros.categorias.length > 0) lista = lista.filter(l => filtros.categorias.includes(l.categoria));
+    return lista;
+  }, [lancamentos, inicio, fim, filtros]);
+
+  // Faturas que VENCEM no período (respeitam os mesmos filtros)
+  const faturasFiltradas = useMemo(() => {
+    if (filtros.busca) return [];
+    let lista = faturasNoPeriodo(cartoes, lancamentos, inicio, fim);
+    if (filtros.tipos.length > 0 && !filtros.tipos.includes('Despesas')) return [];
+    if (filtros.situacao.length > 0) lista = lista.filter(f =>
+      (filtros.situacao.includes('Resolvido') && f.pago) || (filtros.situacao.includes('Pendente') && !f.pago));
+    if (filtros.contaIds.length > 0) lista = lista.filter(f => filtros.contaIds.includes(f._contaIdPagamento));
+    if (filtros.cartaoIds.length > 0) lista = lista.filter(f => filtros.cartaoIds.includes(f.cartaoId));
+    if (filtros.categorias.length > 0 && !filtros.categorias.includes('Fatura Cartão')) return [];
+    return lista;
+  }, [cartoes, lancamentos, inicio, fim, filtros]);
+
+  const { entradasPrev, saidasPrev, entradasReais, saidasReais } = totaisDe(lancFiltrados, faturasFiltradas);
+  const entradas = entradasPrev; const saidas = saidasPrev; const saldo = entradasPrev - saidasPrev;
+  // Saldo realizado (só o que foi pago) e previsto (tudo) ao FINAL do período exibido
+  const saldoRealCumulativo = useMemo(() => calcularSaldos(dados, { ate: fim }).saldoGeral, [dados, fim]);
+  const saldoPrevCumulativo = useMemo(() => saldoPrevisto(dados, fim), [dados, fim]);
+
+  const porDia = useMemo(() => {
+    const grupos = {};
+    [...lancFiltrados, ...faturasFiltradas].forEach(l => { if (!grupos[l.data]) grupos[l.data] = []; grupos[l.data].push(l); });
+    return Object.entries(grupos).sort(([a], [b]) => a.localeCompare(b));
+  }, [lancFiltrados, faturasFiltradas]);
+
+  const nomeConta = (id) => contas.find(c => String(c.id) === String(id))?.nome || '';
 
   function imprimir() {
-    const { contas } = useApp ? {} : {};
-    const itens = [...lancFiltrados, ...(filtros.busca ? [] : faturasMes)]
-      .sort((a,b) => a.data.localeCompare(b.data));
-
+    const itens = porDia.flatMap(([, items]) => items);
     const linhas = itens.map(l => {
-      const [ano,mes,dia] = l.data.split('-');
-      const data = `${dia}/${mes}/${ano}`;
+      const [ano, mes, dia] = l.data.split('-');
       const tipo = l.tipo === 'receita' ? 'Receita' : l.tipo === 'transferencia' ? 'Transf.' : 'Despesa';
-      const valor = (l.tipo==='receita' ? '+' : '-') + 'R$ ' + Math.abs(l.valor).toFixed(2).replace('.',',');
-      const situacao = l.pago ? (l.tipo==='receita' ? 'Recebido' : 'Pago') : (l.tipo==='receita' ? 'Não recebido' : 'Não pago');
-      const conta = l._cartaoBanco ? `${l._cartaoBanco} (cartão)` : '';
+      const sinal = l.tipo === 'receita' ? '+' : l.tipo === 'transferencia' ? '' : '-';
+      const valor = sinal + 'R$ ' + Math.abs(l.valor).toFixed(2).replace('.', ',');
+      const situacao = l.tipo === 'transferencia' ? (l.pago ? 'Transferido' : 'Pendente')
+        : l.pago ? (l.tipo === 'receita' ? 'Recebido' : 'Pago') : (l.tipo === 'receita' ? 'Não recebido' : 'Não pago');
+      const conta = l._cartaoBanco ? `${l._cartaoBanco} (cartão)`
+        : l.tipo === 'transferencia' ? `${nomeConta(l.contaId)} → ${nomeConta(l.contaDestinoId)}`
+        : nomeConta(l.contaId);
+      const cor = l.tipo === 'receita' ? '#16a34a' : l.tipo === 'transferencia' ? '#1d4ed8' : '#dc2626';
       return `<tr>
         <td>${tipo}</td>
-        <td>${data}</td>
-        <td>${l.descricao || ''}</td>
-        <td>${conta}</td>
-        <td>${l.categoria || ''}</td>
-        <td style="text-align:right;color:${l.tipo==='receita'?'#16a34a':'#dc2626'}">${valor}</td>
+        <td>${dia}/${mes}/${ano}</td>
+        <td>${escapar(l.descricao)}</td>
+        <td>${escapar(conta)}</td>
+        <td>${escapar(l.categoria)}</td>
+        <td style="text-align:right;color:${cor}">${valor}</td>
         <td>${situacao}</td>
       </tr>`;
     }).join('');
 
-    const totalReceitas = itens.filter(l=>l.tipo==='receita').reduce((a,l)=>a+Math.abs(l.valor),0);
-    const totalDespesas = itens.filter(l=>l.tipo==='despesa').reduce((a,l)=>a+Math.abs(l.valor),0);
-    const total = totalReceitas - totalDespesas;
-
+    const total = entradasPrev - saidasPrev;
     const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/>
     <title>Movimentações</title>
     <style>
@@ -151,7 +145,6 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
       table{width:100%;border-collapse:collapse;margin-bottom:20px}
       th{background:#16a34a;color:white;padding:8px 6px;text-align:left;font-size:11px}
       td{padding:6px;border-bottom:1px solid #eee;font-size:11px}
-      tr:hover{background:#f9fafb}
       .totais{border-top:2px solid #111;padding-top:10px;text-align:right}
       .totais div{margin-bottom:4px}
       @media print{body{margin:10px}}
@@ -166,9 +159,9 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
       <tbody>${linhas}</tbody>
     </table>
     <div class="totais">
-      <div>Total receitas: <strong style="color:#16a34a">+R$ ${totalReceitas.toFixed(2).replace('.',',')}</strong></div>
-      <div>Total despesas: <strong style="color:#dc2626">-R$ ${totalDespesas.toFixed(2).replace('.',',')}</strong></div>
-      <div style="font-size:14px;margin-top:6px">Total: <strong style="color:${total>=0?'#1d4ed8':'#dc2626'}">R$ ${total.toFixed(2).replace('.',',')}</strong></div>
+      <div>Total receitas: <strong style="color:#16a34a">+R$ ${entradasPrev.toFixed(2).replace('.', ',')}</strong></div>
+      <div>Total despesas: <strong style="color:#dc2626">-R$ ${saidasPrev.toFixed(2).replace('.', ',')}</strong></div>
+      <div style="font-size:14px;margin-top:6px">Total: <strong style="color:${total >= 0 ? '#1d4ed8' : '#dc2626'}">R$ ${total.toFixed(2).replace('.', ',')}</strong></div>
     </div>
     <script>window.onload=()=>{window.print();}</script>
     </body></html>`;
@@ -177,211 +170,6 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
     win.document.write(html);
     win.document.close();
   }
-
-  function abrirEditar(lanc) {
-    setDetalhe(null);
-    // Se for fixo, pergunta antes de editar
-    if (lanc.fixo && !lanc._copia) {
-      setConfirmarEditarFixo(lanc);
-    } else {
-      setEditando(lanc);
-      setModalAberto(true);
-    }
-  }
-  function fecharModal() { setModalAberto(false); setEditando(null); }
-
-  const lancFiltrados = useMemo(() => {
-    const { inicio, fim } = calcularIntervalo(modo, dataRef);
-    const mesAno = `${anoAtual}-${String(mesAtual+1).padStart(2,'0')}`;
-    let lista = lancamentos
-      .filter(l => !l.cartaoId && l.cartaoId !== 0)
-      .flatMap(l => {
-        const d = new Date(l.data+'T00:00:00');
-
-        // ── MODO PERSONALIZADO com fixo: gera entrada para cada mês do range ──
-        if (modo === 'personalizado' && l.fixo && d <= fim) {
-          const entradas = [];
-          let cur = new Date(inicio.getFullYear(), inicio.getMonth(), 1);
-          while (cur <= fim) {
-            const curAno = cur.getFullYear();
-            const curMes = cur.getMonth();
-            const curMesAno = `${curAno}-${String(curMes+1).padStart(2,'0')}`;
-            const diaAlvo = diaFixoNoMes(l.data, curAno, curMes);
-            const dataNoMes = new Date(curAno, curMes, diaAlvo);
-
-            // Só inclui se: a data está no range, após a criação, sem exceção, sem fim
-            if (dataNoMes >= inicio && dataNoMes <= fim && dataNoMes >= d &&
-                !(l.excecoesMeses||[]).includes(curMesAno) &&
-                !(l.fixoFimData && curMesAno >= l.fixoFimData)) {
-              const pagoMes = (l.pagoPorMes||{})[curMesAno] ?? false;
-              const dataStr = `${curAno}-${String(curMes+1).padStart(2,'0')}-${String(diaAlvo).padStart(2,'0')}`;
-              entradas.push({ ...l, data: dataStr, pago: pagoMes, _fixoMesAno: curMesAno });
-            }
-            cur.setMonth(cur.getMonth() + 1);
-          }
-          return entradas;
-        }
-
-        // ── CAMINHO NORMAL ──
-        if (d >= inicio && d <= fim) {
-          if (l.fixo) {
-            if ((l.excecoesMeses||[]).includes(mesAno)) return [];
-            if (l.fixoFimData && mesAno >= l.fixoFimData) return [];
-          }
-          return [l];
-        }
-
-        // ── FIXO em outros modos ──
-        if (l.fixo && d <= fim) {
-          if ((l.excecoesMeses||[]).includes(mesAno)) return [];
-          if (l.fixoFimData && mesAno >= l.fixoFimData) return [];
-          const diaAlvo = diaFixoNoMes(l.data, anoAtual, mesAtual);
-          const dataNoMes = `${anoAtual}-${String(mesAtual+1).padStart(2,'0')}-${String(diaAlvo).padStart(2,'0')}`;
-          const pagoMes = (l.pagoPorMes||{})[mesAno] ?? false;
-
-          if (modo === 'dia') {
-            if (diaAlvo !== inicio.getDate()) return [];
-            return [{ ...l, data: dataNoMes, pago: pagoMes, _fixoMesAno: mesAno }];
-          }
-          if (modo === 'semana') {
-            const dt = new Date(anoAtual, mesAtual, diaAlvo);
-            if (dt < inicio || dt > fim) return [];
-            return [{ ...l, data: dataNoMes, pago: pagoMes, _fixoMesAno: mesAno }];
-          }
-          return [{ ...l, data: dataNoMes, pago: pagoMes, _fixoMesAno: mesAno }];
-        }
-        return [];
-      });
-
-    if (filtros.busca) { const b = filtros.busca.toLowerCase(); lista = lista.filter(l => l.descricao.toLowerCase().includes(b)); }
-    if (filtros.tipos.length > 0) lista = lista.filter(l => {
-      if (filtros.tipos.includes('Receitas') && l.tipo==='receita') return true;
-      if (filtros.tipos.includes('Despesas') && l.tipo==='despesa') return true;
-      if (filtros.tipos.includes('Transferências') && l.tipo==='transferencia') return true;
-      if (filtros.tipos.includes('Lançamentos fixos') && l.fixo) return true;
-      if (filtros.tipos.includes('Lançamentos parcelados') && l.parcelado) return true;
-      return false;
-    });
-    if (filtros.situacao.length > 0) lista = lista.filter(l => {
-      if (filtros.situacao.includes('Resolvido') && l.pago) return true;
-      if (filtros.situacao.includes('Pendente') && !l.pago) return true;
-      return false;
-    });
-    if (filtros.contaIds.length > 0) lista = lista.filter(l => filtros.contaIds.includes(l.contaId));
-    if (filtros.cartaoIds.length > 0) lista = lista.filter(l => filtros.cartaoIds.includes(l.cartaoId));
-    if (filtros.categorias.length > 0) lista = lista.filter(l => filtros.categorias.includes(l.categoria));
-    return lista.sort((a,b) => a.data.localeCompare(b.data));
-  }, [lancamentos, modo, dataRef, filtros]);
-
-  const faturasMes = useMemo(() => {
-    // Chave de pagamento usa o mês do VENCIMENTO (mês atual)
-    const mesAnoVenc = `${anoAtual}-${String(mesAtual+1).padStart(2,'0')}`;
-
-    return cartoes.map(cartao => {
-      // Qual fatura VENCE neste mês depende do cartão:
-      // vencimento depois do fechamento → fatura do próprio mês; antes → fatura do mês anterior
-      const vencMesmoMes = cartao.diaVencimento > cartao.diaFechamento;
-      const mesFatura = vencMesmoMes ? mesAtual : (mesAtual === 0 ? 11 : mesAtual - 1);
-      const anoFatura = vencMesmoMes ? anoAtual : (mesAtual === 0 ? anoAtual - 1 : anoAtual);
-      const inicioFatura = new Date(anoFatura,mesFatura,1);
-      const fimFatura = new Date(anoFatura,mesFatura+1,0,23,59,59);
-
-      const totalFatura = lancamentos.filter(l => {
-        if (l.cartaoId !== cartao.id || l.tipo !== 'despesa') return false;
-        // Novo: usa faturaMes/faturaAno
-        if (l.faturaMes != null) return l.faturaMes === mesFatura && l.faturaAno === anoFatura;
-        // Legado: usa data do lançamento
-        const d = new Date(l.data+'T00:00:00');
-        return (d >= inicioFatura && d <= fimFatura) || (l.fixo && d <= fimFatura);
-      }).reduce((acc,l) => acc + Math.abs(l.valor), 0);
-
-      if (totalFatura === 0) return null;
-
-      // Data da fatura = dia do vencimento no mês ATUAL (quando o dinheiro sai)
-      const diaVenc = String(cartao.diaVencimento).padStart(2,'0');
-      const dataFatura = `${anoAtual}-${String(mesAtual+1).padStart(2,'0')}-${diaVenc}`;
-      const fp = (cartao.faturasPagas||{})[mesAnoVenc];
-      const estaPago = typeof fp==='object' ? fp?.pago : !!fp;
-      const contaIdPagamento = typeof fp==='object' ? fp?.contaId : null;
-
-      return {
-        id: `fatura-${cartao.id}-${mesAnoVenc}`,
-        descricao: `Fatura ${nomeMes(mesFatura)} ${anoFatura}`,
-        valor: -totalFatura, data: dataFatura,
-        tipo: 'despesa', categoria: 'Fatura Cartão',
-        cartaoId: cartao.id, contaId: null,
-        pago: estaPago, _isFatura: true,
-        _cartaoNome: cartao.nome, _cartaoBanco: cartao.banco, _cartaoCor: cartao.cor,
-        _mesAno: mesAnoVenc, _contaIdPagamento: contaIdPagamento,
-      };
-    }).filter(Boolean);
-  }, [cartoes, lancamentos, mesAtual, anoAtual]);
-
-  // Faturas só entram nos totais quando NÃO há busca por texto
-  const incluirFaturas = !filtros.busca;
-  const entradasReais = lancFiltrados.filter(l => l.tipo==='receita' && l.pago).reduce((a,l) => a+l.valor, 0);
-  const saidasContaReais = lancFiltrados.filter(l => l.tipo==='despesa' && l.pago).reduce((a,l) => a+Math.abs(l.valor), 0);
-  const saidasFaturaReais = incluirFaturas ? faturasMes.filter(f => f.pago).reduce((a,f) => a+Math.abs(f.valor), 0) : 0;
-  const saidasReais = saidasContaReais + saidasFaturaReais;
-  const entradasPrev = lancFiltrados.filter(l => l.tipo==='receita').reduce((a,l) => a+l.valor, 0);
-  const saidasContaPrev = lancFiltrados.filter(l => l.tipo==='despesa').reduce((a,l) => a+Math.abs(l.valor), 0);
-  const saidasFaturaPrev = incluirFaturas ? faturasMes.reduce((a,f) => a+Math.abs(f.valor), 0) : 0;
-  const saidasPrev = saidasContaPrev + saidasFaturaPrev;
-  const entradas = entradasPrev; const saidas = saidasPrev; const saldo = entradasPrev - saidasPrev;
-  const saldoRealCumulativo = useMemo(() => {
-    let s = saldoGeral;
-    // Faturas pagas COM conta vinculada já são descontadas no saldo da conta (AppContext).
-    // Aqui desconta apenas pagamentos legados (sem contaId registrado), para não duplicar.
-    cartoes.forEach(cartao => {
-      const fp = cartao.faturasPagas||{};
-      Object.entries(fp).forEach(([mesAno,f]) => {
-        const info = typeof f==='object' ? f : { pago: !!f };
-        if (!info.pago || info.contaId) return;
-        // mesAno é o mês do VENCIMENTO; a fatura correspondente depende do cartão
-        const [a,m] = mesAno.split('-').map(Number);
-        const vencMesmoMes = cartao.diaVencimento > cartao.diaFechamento;
-        let fm = m - 1, fa = a; // 0-based
-        if (!vencMesmoMes) { fm = fm - 1; if (fm < 0) { fm = 11; fa--; } }
-        const iniM = new Date(fa,fm,1); const fimM = new Date(fa,fm+1,0,23,59,59);
-        const total = lancamentos.filter(l => {
-          if (l.cartaoId!==cartao.id||l.tipo!=='despesa') return false;
-          if (l.faturaMes != null) return l.faturaMes === fm && l.faturaAno === fa;
-          const d = new Date(l.data+'T00:00:00');
-          return (d>=iniM&&d<=fimM)||(l.fixo&&d<=fimM);
-        }).reduce((acc,l) => acc+Math.abs(l.valor),0);
-        s -= info.valor != null ? info.valor : total;
-      });
-    });
-    return s;
-  }, [saldoGeral, cartoes, lancamentos]);
-  const saldoPrevCumulativo = useMemo(() => {
-    // Sempre usa o mês atual real para o acumulado (independente do modo de visualização)
-    const hoje = new Date();
-    const anoBase = hoje.getFullYear();
-    const mesBase = hoje.getMonth();
-    const fim = new Date(anoBase, mesBase+1, 0, 23, 59, 59);
-    const transacoes = lancamentos.reduce((acc,l) => {
-      try {
-        const d = new Date(l.data+'T00:00:00');
-        if (!d || isNaN(d.getTime()) || d > fim) return acc;
-        const v = l.tipo==='receita' ? Math.abs(l.valor||0) : -Math.abs(l.valor||0);
-        if (l.fixo) {
-          const mp = (anoBase - d.getFullYear())*12 + (mesBase - d.getMonth()) + 1;
-          return acc + v * Math.max(mp, 1);
-        }
-        return acc + v;
-      } catch { return acc; }
-    }, 0);
-    return (saldoInicialTotal||0) + transacoes;
-  }, [lancamentos, mesAtual, anoAtual, saldoInicialTotal]);
-
-  const porDia = useMemo(() => {
-    // Faturas só aparecem quando NÃO há busca por texto ativa
-    const faturas = filtros.busca ? [] : faturasMes;
-    const grupos = {};
-    [...lancFiltrados, ...faturas].forEach(l => { if(!grupos[l.data]) grupos[l.data]=[]; grupos[l.data].push(l); });
-    return Object.entries(grupos).sort(([a],[b]) => a.localeCompare(b));
-  }, [lancFiltrados, faturasMes, filtros.busca]);
 
   function formatarDiaHeader(dataStr) {
     try {
@@ -433,8 +221,8 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
               </button>
               <button onClick={() => setDataRef(navegar(modo, dataRef, 1))} style={navBtn}><ChevronRight size={20}/></button>
             </div>
-            {dataRef !== toStr(new Date(new Date().getFullYear(), new Date().getMonth(), 1)) || modo !== 'mes' ? (
-              <button onClick={() => { setModo('mes'); setDataRef(toStr(new Date(new Date().getFullYear(), new Date().getMonth(), 1))); }}
+            {dataRef !== primeiroDoMesAtual() || modo !== 'mes' ? (
+              <button onClick={() => { setModo('mes'); setDataRef(primeiroDoMesAtual()); }}
                 style={{ background:'white', color:'#16a34a', border:'none', borderRadius:10, padding:'6px 10px', fontWeight:700, fontSize:12, cursor:'pointer', whiteSpace:'nowrap' }}>Hoje</button>
             ) : null}
           </div>
@@ -447,7 +235,7 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
                 {[
                   { label:'Hoje', fn: () => { setModo('dia'); setDataRef(hoje); }},
                   { label:'Esta semana', fn: () => { setModo('semana'); setDataRef(hoje); }},
-                  { label:'Este mês', fn: () => { setModo('mes'); setDataRef(toStr(new Date(new Date().getFullYear(), new Date().getMonth(), 1))); }},
+                  { label:'Este mês', fn: () => { setModo('mes'); setDataRef(primeiroDoMesAtual()); }},
                   { label:'Escolher período', fn: () => setShowCustom(true) },
                 ].map((op, i, arr) => (
                   <button key={op.label} onClick={() => { op.fn(); setPeriodoDropdown(false); }}
@@ -507,7 +295,7 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
               {formatarDiaHeader(data)}
             </div>
             {items.map(l => (
-              <CardLancamento key={l.id} lanc={l} onClick={() => l._isFatura ? setFaturaParaPagar(l) : setDetalhe(l)} />
+              <CardLancamento key={`${l.id}-${l._fixoMesAno || ''}`} lanc={l} onClick={() => l._isFatura ? setFaturaParaPagar(l) : setDetalhe(l)} />
             ))}
           </div>
         ))}
@@ -553,81 +341,16 @@ export default function FluxoScreen({ filtroInicial: filtroVindoDaHome }) {
         </div>
       )}
 
-      <button onClick={() => setModalAberto(true)} style={fab}><Plus size={28} color="white" /></button>
+      <button onClick={acoes.novo} style={fab}><Plus size={28} color="white" /></button>
 
-      {modalAberto && <ModalLancamento editando={editando} onFechar={fecharModal} />}
       {detalhe && <DetalheModal
         lanc={detalhe}
         onFechar={() => setDetalhe(null)}
-        onEditar={abrirEditar}
-        onExcluir={detalhe.fixo || detalhe._fixoMesAno ? (l) => { setDetalhe(null); setConfirmarExcluirFixo(l); } : null}
-        onTogglePago={() => {
-          if (detalhe._fixoMesAno) togglePagoFixo(detalhe.id, detalhe._fixoMesAno);
-          else togglePago(detalhe.id);
-          setDetalhe(null);
-        }} />}
+        onEditar={acoes.editar}
+        onExcluir={(l) => { setDetalhe(null); acoes.excluir(l); }} />}
       {filtroAberto && <FiltroModal filtros={filtros} onAplicar={setFiltros} onFechar={() => setFiltroAberto(false)} />}
       {faturaParaPagar && <ModalPagarFatura fatura={faturaParaPagar} onFechar={() => setFaturaParaPagar(null)} />}
-
-      {confirmarExcluirFixo && (
-        <ModalExcluirFixo
-          lanc={confirmarExcluirFixo}
-          onCancelar={() => setConfirmarExcluirFixo(null)}
-          onSoEste={() => {
-            // Só pula este mês no fixo (sem excluir o registro)
-            const mesAno = confirmarExcluirFixo._fixoMesAno ||
-              `${anoAtual}-${String(mesAtual+1).padStart(2,'0')}`;
-            adicionarExcecaoFixo(confirmarExcluirFixo.id, mesAno);
-            setConfirmarExcluirFixo(null);
-          }}
-          onTodosProximos={() => {
-            // Para o fixo a partir deste mês — NÃO limpa excecoesMeses (preserva exclusões passadas)
-            const mesAno = confirmarExcluirFixo._fixoMesAno ||
-              `${anoAtual}-${String(mesAtual+1).padStart(2,'0')}`;
-            pararFixoNoMes(confirmarExcluirFixo.id, mesAno);
-            setConfirmarExcluirFixo(null);
-          }}
-        />
-      )}
-
-      {confirmarEditarFixo && (
-        <ModalEditarFixo
-          lanc={confirmarEditarFixo}
-          onCancelar={() => setConfirmarEditarFixo(null)}
-          onSoEste={() => {
-            // Marca este mês como exceção no original (não mostrar mais este mês via fixo)
-            const mesAno = confirmarEditarFixo._fixoMesAno ||
-              `${anoAtual}-${String(mesAtual+1).padStart(2,'0')}`;
-            adicionarExcecaoFixo(confirmarEditarFixo.id, mesAno);
-            // Abre modal para editar — cria entrada única para este mês
-            const { id: origId, fixo, pagoPorMes, excecoesMeses, _fixoMesAno, ...resto } = confirmarEditarFixo;
-            setConfirmarEditarFixo(null);
-            // _excecaoDeId vincula a entrada de exceção ao fixo original (para limpeza posterior)
-            setEditando({ ...resto, fixo: false, _copia: true, _excecaoDeId: origId, data: confirmarEditarFixo.data });
-            setModalAberto(true);
-          }}
-          onTodosProximos={() => {
-            const mesAnoVirtual = confirmarEditarFixo._fixoMesAno;
-            const original = lancamentos.find(l => l.id === confirmarEditarFixo.id);
-
-            if (mesAnoVirtual && original) {
-              // Editando de um mês VIRTUAL (futuro):
-              // 1. Para o fixo original ANTES deste mês (preserva meses passados)
-              pararFixoNoMes(original.id, mesAnoVirtual);
-              // 2. Abre modal com NOVO fixo (sem id) começando do mês virtual
-              const { id, _copia, _fixoMesAno, _excecaoDeId, fixoFimData, excecoesMeses, ...resto } = original;
-              setConfirmarEditarFixo(null);
-              setEditando({ ...resto, data: confirmarEditarFixo.data, _criarNovoFixo: true });
-            } else {
-              // Editando do MÊS ORIGINAL: apenas edita normalmente
-              const { _copia, _fixoMesAno, _excecaoDeId, ...limpo } = (original || confirmarEditarFixo);
-              setConfirmarEditarFixo(null);
-              setEditando(limpo);
-            }
-            setModalAberto(true);
-          }}
-        />
-      )}
+      {acoes.elementos}
     </div>
   );
 }
@@ -658,6 +381,7 @@ function CardLancamento({ lanc, onClick }) {
   const bgIcon = isReceita?'#dcfce7':isTransf?'#dbeafe':'#fee2e2';
   const emoji = emojisCategoria[lanc.categoria]||'📌';
   const conta = contas.find(c => c.id===lanc.contaId);
+  const destino = isTransf ? contas.find(c => c.id===lanc.contaDestinoId) : null;
 
   if (lanc._isFatura) {
     const contaPagamento = lanc.pago && lanc._contaIdPagamento ? contas.find(c => c.id===lanc._contaIdPagamento) : null;
@@ -690,13 +414,13 @@ function CardLancamento({ lanc, onClick }) {
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:2 }}>
           <p style={{ fontSize:11, color:'#aaa' }}>{lanc.categoria}</p>
-          {conta && <><span style={{ fontSize:10, color:'#ddd' }}>•</span><div style={{ display:'flex', alignItems:'center', gap:4 }}><IconeBanco nome={conta.nome} icone={conta.icone} cor={conta.cor} size={16}/><p style={{ fontSize:11, color:'#aaa' }}>{conta.nome}</p></div></>}
+          {conta && <><span style={{ fontSize:10, color:'#ddd' }}>•</span><div style={{ display:'flex', alignItems:'center', gap:4 }}><IconeBanco nome={conta.nome} icone={conta.icone} cor={conta.cor} size={16}/><p style={{ fontSize:11, color:'#aaa' }}>{conta.nome}{destino ? ` → ${destino.nome}` : ''}</p></div></>}
         </div>
       </div>
       <div style={{ textAlign:'right', flexShrink:0 }}>
-        <p style={{ fontSize:15, fontWeight:700, color:cor }}>{isReceita?'+':'-'}{formatarMoeda(Math.abs(lanc.valor))}</p>
+        <p style={{ fontSize:15, fontWeight:700, color:cor }}>{isReceita?'+':isTransf?'':'-'}{formatarMoeda(Math.abs(lanc.valor))}</p>
         <p style={{ fontSize:10, color:lanc.pago?'#16a34a':'#aaa', fontWeight:600, marginTop:2 }}>
-          {lanc.pago?(isReceita?'✓ Recebido':'✓ Pago'):(isReceita?'Não recebido':'Não pago')}
+          {isTransf?(lanc.pago?'✓ Transferido':'Pendente'):lanc.pago?(isReceita?'✓ Recebido':'✓ Pago'):(isReceita?'Não recebido':'Não pago')}
         </p>
       </div>
     </div>

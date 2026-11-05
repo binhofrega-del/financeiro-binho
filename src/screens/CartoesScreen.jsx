@@ -1,105 +1,71 @@
 import { useState, useMemo } from 'react';
 import { ChevronLeft, ChevronRight, Plus, CreditCard } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { formatarMoeda, nomeMes, emojisCategoria, logoParaBanco, vencimentoDaFatura, calcularFaturaCartao } from '../utils/formatters';
-import ModalLancamento from '../components/ModalLancamento';
+import { formatarMoeda, nomeMes, emojisCategoria, logoParaBanco } from '../utils/formatters';
 import DetalheModal from '../components/DetalheModal';
+import { useAcoesLancamento } from '../hooks/useAcoesLancamento';
+import {
+  hojeISO, somarMeses, mesmoMes, faturaAtual, itensDaFatura, totalDosItens,
+  infoPagamentoFatura, limiteUsado, diasAteVencimento, dataFechamento, dataVencimento,
+} from '../utils/financas';
+
+const brData = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 
 export default function CartoesScreen({ setAba }) {
-  const { cartoes, lancamentos, removerLancamento } = useApp();
+  const { cartoes, lancamentos } = useApp();
+  const hoje = hojeISO();
   const [cartaoIdx, setCartaoIdx] = useState(0);
-  const [mesAtual, setMesAtual] = useState(new Date().getMonth());
-  const [anoAtual, setAnoAtual] = useState(new Date().getFullYear());
-  const [modalAberto, setModalAberto] = useState(false);
-  const [editando, setEditando] = useState(null);
+  const [fatEscolhida, setFatEscolhida] = useState(null); // null = fatura aberta hoje
   const [detalhe, setDetalhe] = useState(null);
 
-  function mudarMes(dir) {
-    let m = mesAtual + dir;
-    let a = anoAtual;
-    if (m > 11) { m = 0; a++; }
-    if (m < 0) { m = 11; a--; }
-    setMesAtual(m);
-    setAnoAtual(a);
-  }
+  const cartao = cartoes[Math.min(cartaoIdx, cartoes.length - 1)] || null;
+  const acoes = useAcoesLancamento({ cartaoPreSelecionado: cartao?.id });
+  const fatAberta = cartao ? faturaAtual(cartao, hoje) : null;
+  const fat = fatEscolhida || fatAberta;
+  const chaveFat = fat ? `${fat.ano}-${fat.mes}` : '';
+  const mesAtual = fat ? fat.mes : 0;
+  const anoAtual = fat ? fat.ano : 0;
+
+  function mudarMes(dir) { setFatEscolhida(somarMeses(fat, dir)); }
 
   function mudarCartao(dir) {
     let idx = cartaoIdx + dir;
     if (idx < 0) idx = cartoes.length - 1;
     if (idx >= cartoes.length) idx = 0;
     setCartaoIdx(idx);
+    setFatEscolhida(null);
   }
 
-  function abrirEditar(lanc) {
-    setDetalhe(null);
-    setEditando(lanc);
-    setModalAberto(true);
-  }
+  // Itens desta fatura (compras, parcelas, estornos e fixos) — regra em utils/financas.js
+  const lancCartao = useMemo(
+    () => {
+      if (!cartao || !chaveFat) return [];
+      const [ano, mes] = chaveFat.split('-').map(Number);
+      return itensDaFatura(lancamentos, cartao, { ano, mes });
+    },
+    [lancamentos, cartao, chaveFat]
+  );
 
-  if (cartoes.length === 0) return <SemCartao setAba={setAba} />;
+  const totalFatura = totalDosItens(lancCartao);
+  const pg = cartao && fat ? infoPagamentoFatura(cartao, fat) : { pago: false, valor: null };
+  const totalPago = pg.pago ? (pg.valor ?? totalFatura) : 0;
+  const totalPendente = Math.max(totalFatura - totalPago, 0);
+  // Limite comprometido considera todas as faturas em aberto (inclui parcelas futuras)
+  const usado = cartao ? limiteUsado(cartao, lancamentos, hoje) : 0;
+  const disponivel = cartao ? cartao.limite - usado : 0;
+  const pctUsado = cartao?.limite > 0 ? Math.min(Math.max((usado / cartao.limite) * 100, 0), 100) : 0;
 
-  const cartao = cartoes[cartaoIdx];
-
-  // Lançamentos deste cartão neste mês
-  // Lançamentos FIXOS no cartão aparecem em todos os meses a partir da data de criação
-  const lancCartao = useMemo(() => {
-    const inicioMes = new Date(anoAtual, mesAtual, 1);
-    const fimMes = new Date(anoAtual, mesAtual + 1, 0, 23, 59, 59);
-
-    return lancamentos
-      .filter(l => l.cartaoId === cartao.id)
-      .map(l => {
-        // Novo: lançamento tem faturaMes/faturaAno definido
-        if (l.faturaMes != null && l.faturaAno != null) {
-          if (l.faturaMes === mesAtual && l.faturaAno === anoAtual) return l;
-          // Fixo: repete todo mês a partir da criação
-          if (l.fixo) {
-            const dCriacao = new Date(l.data + 'T00:00:00');
-            const fimMesRef = new Date(anoAtual, mesAtual + 1, 0);
-            if (dCriacao <= fimMesRef) {
-              const dataNoMes = `${anoAtual}-${String(mesAtual + 1).padStart(2, '0')}-${l.data.slice(8, 10)}`;
-              return { ...l, data: dataNoMes };
-            }
-          }
-          return null;
-        }
-
-        // Legado: sem faturaMes, calcula a fatura pelo ciclo de fechamento
-        const d = new Date(l.data + 'T00:00:00');
-        const fat = calcularFaturaCartao(l.data, cartao.diaFechamento);
-        if (fat.faturaMes === mesAtual && fat.faturaAno === anoAtual) return l;
-        if (l.fixo && d <= fimMes) {
-          const dataNoMes = `${anoAtual}-${String(mesAtual + 1).padStart(2, '0')}-${l.data.slice(8, 10)}`;
-          return { ...l, data: dataNoMes };
-        }
-        return null;
-      })
-      .filter(Boolean)
-      .sort((a, b) => a.data.localeCompare(b.data));
-  }, [lancamentos, cartao.id, mesAtual, anoAtual]);
-
-  const totalFatura = lancCartao.reduce((acc, l) => acc + Math.abs(l.valor), 0);
-  // Status da fatura (paga/aberta) — registrado pela chave do mês de VENCIMENTO
-  const venc = vencimentoDaFatura(mesAtual, anoAtual, cartao.diaFechamento, cartao.diaVencimento);
-  const chaveVenc = `${venc.ano}-${String(venc.mes + 1).padStart(2, '0')}`;
-  const fpInfo = (cartao.faturasPagas || {})[chaveVenc];
-  const faturaPaga = typeof fpInfo === 'object' ? !!fpInfo?.pago : !!fpInfo;
-  const totalPago = faturaPaga ? totalFatura : 0;
-  const totalPendente = totalFatura - totalPago;
-  const disponivel = cartao.limite - totalFatura;
-  const pctUsado = Math.min((totalFatura / cartao.limite) * 100, 100);
-
-  // Gastos por categoria
+  // Gastos por categoria (só despesas)
   const porCategoria = useMemo(() => {
     const mapa = {};
-    lancCartao.forEach(l => {
-      if (!mapa[l.categoria]) mapa[l.categoria] = 0;
-      mapa[l.categoria] += Math.abs(l.valor);
+    lancCartao.filter(l => l.tipo !== 'receita').forEach(l => {
+      mapa[l.categoria] = (mapa[l.categoria] || 0) + Math.abs(l.valor);
     });
+    const totalDesp = Object.values(mapa).reduce((a, b) => a + b, 0);
     return Object.entries(mapa)
       .sort(([, a], [, b]) => b - a)
-      .map(([cat, val]) => ({ cat, val, pct: totalFatura > 0 ? (val / totalFatura) * 100 : 0 }));
-  }, [lancCartao, totalFatura]);
+      .map(([cat, val]) => ({ cat, val, pct: totalDesp > 0 ? (val / totalDesp) * 100 : 0 }));
+  }, [lancCartao]);
 
   // Agrupar por dia
   const porDia = useMemo(() => {
@@ -111,12 +77,9 @@ export default function CartoesScreen({ setAba }) {
     return Object.entries(grupos).sort(([a], [b]) => a.localeCompare(b));
   }, [lancCartao]);
 
-  // Dias para vencimento
-  const hoje = new Date();
-  const diaHoje = hoje.getDate();
-  const diasVenc = cartao.diaVencimento >= diaHoje
-    ? cartao.diaVencimento - diaHoje
-    : 30 - diaHoje + cartao.diaVencimento;
+  if (!cartao) return <SemCartao setAba={setAba} />;
+
+  const diasVenc = diasAteVencimento(cartao, hoje);
 
   function formatarDiaHeader(dataStr) {
     const [ano, mes, dia] = dataStr.split('-');
@@ -185,8 +148,8 @@ export default function CartoesScreen({ setAba }) {
             <span style={{ fontSize: 14, fontWeight: 700, color: '#111' }}>Fatura de {nomeMes(mesAtual)} {anoAtual}</span>
             <button onClick={() => mudarMes(1)} style={navBtnDark}><ChevronRight size={18} /></button>
           </div>
-          {(mesAtual !== new Date().getMonth() || anoAtual !== new Date().getFullYear()) && (
-            <button onClick={() => { setMesAtual(new Date().getMonth()); setAnoAtual(new Date().getFullYear()); }}
+          {!mesmoMes(fat, fatAberta) && (
+            <button onClick={() => setFatEscolhida(null)}
               style={{ background: '#16a34a', color: 'white', border: 'none', borderRadius: 10, padding: '8px 12px', fontWeight: 700, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
               Hoje
             </button>
@@ -228,17 +191,17 @@ export default function CartoesScreen({ setAba }) {
                   {formatarDiaHeader(data)}
                 </p>
                 {items.map(l => (
-                  <div key={l.id} onClick={() => setDetalhe(l)}
+                  <div key={`${l.id}-${l._fixoMesAno || ''}`} onClick={() => setDetalhe(l)}
                     style={{ background: 'white', borderRadius: 13, padding: '11px 13px', marginBottom: 7, display: 'flex', alignItems: 'center', gap: 11, boxShadow: '0 1px 4px rgba(0,0,0,0.05)', cursor: 'pointer' }}>
                     <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>
                       {emojisCategoria[l.categoria] || '📌'}
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ fontSize: 14, fontWeight: 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.descricao}</p>
-                      <p style={{ fontSize: 11, color: '#aaa', marginTop: 1 }}>{l.categoria}{l.parcelado ? ` · ${l.parcela}/${l.totalParcelas}x` : ''}</p>
+                      <p style={{ fontSize: 11, color: '#aaa', marginTop: 1 }}>{l.categoria}{l.parcelado ? ` · ${l.parcela}/${l.totalParcelas}x` : ''}{l.fixo ? ' · fixo' : ''}</p>
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                      <p style={{ fontSize: 14, fontWeight: 700, color: '#dc2626' }}>-{formatarMoeda(Math.abs(l.valor))}</p>
+                      <p style={{ fontSize: 14, fontWeight: 700, color: l.tipo === 'receita' ? '#16a34a' : '#dc2626' }}>{l.tipo === 'receita' ? '+' : '-'}{formatarMoeda(Math.abs(l.valor))}</p>
                       <p style={{ fontSize: 10, color: '#16a34a', fontWeight: 600, marginTop: 1 }}>✓ Confirmado</p>
                     </div>
                   </div>
@@ -250,13 +213,17 @@ export default function CartoesScreen({ setAba }) {
       </div>
 
       {/* FAB */}
-      <button onClick={() => { setEditando(null); setModalAberto(true); }}
+      <button onClick={acoes.novo}
         style={{ position: 'absolute', bottom: 80, right: 20, width: 56, height: 56, borderRadius: '50%', background: '#16a34a', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 16px rgba(22,163,74,0.45)', zIndex: 10 }}>
         <Plus size={28} color="white" />
       </button>
 
-      {modalAberto && <ModalLancamento editando={editando} onFechar={() => { setModalAberto(false); setEditando(null); }} cartaoPreSelecionado={cartao.id} />}
-      {detalhe && <DetalheModal lanc={detalhe} onFechar={() => setDetalhe(null)} onEditar={abrirEditar} />}
+      {detalhe && <DetalheModal
+        lanc={detalhe}
+        onFechar={() => setDetalhe(null)}
+        onEditar={acoes.editar}
+        onExcluir={(l) => { setDetalhe(null); acoes.excluir(l); }} />}
+      {acoes.elementos}
     </div>
   );
 }
@@ -279,9 +246,9 @@ function SemCartao({ setAba }) {
 function CardVisual({ cartao, mesAtual, anoAtual, totalFatura, disponivel, pctUsado }) {
   // A fatura do mês X agrupa as compras do ciclo e FECHA no diaFechamento do próprio mês X;
   // o vencimento cai no mesmo mês ou no seguinte, conforme a configuração do cartão
-  const venc = vencimentoDaFatura(mesAtual, anoAtual, cartao.diaFechamento, cartao.diaVencimento);
-  const dataFecha = `${String(cartao.diaFechamento).padStart(2,'0')}/${String(mesAtual + 1).padStart(2,'0')}/${anoAtual}`;
-  const dataVence = `${String(cartao.diaVencimento).padStart(2,'0')}/${String(venc.mes + 1).padStart(2,'0')}/${venc.ano}`;
+  const fat = { ano: anoAtual, mes: mesAtual };
+  const dataFecha = brData(dataFechamento(fat, cartao));
+  const dataVence = brData(dataVencimento(fat, cartao));
 
   return (
     <div style={{ background: `linear-gradient(135deg, ${cartao.cor}, #1d4ed8)`, borderRadius: 18, padding: '18px 20px', color: 'white', boxShadow: '0 8px 24px rgba(0,0,0,0.2)' }}>
