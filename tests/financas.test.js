@@ -145,7 +145,7 @@ test('dias até o vencimento usa calendário real', () => {
 });
 
 // ── Previsto / resumo ───────────────────────────────────────────────────────
-test('previsto respeita exceções e término dos fixos e usa faturas, não compras (bug 4)', () => {
+test('previsto respeita exceções e término dos fixos; fatura em aberto não entra (igual Organizze)', () => {
   const dados = {
     contas, cartoes: [nubank],
     lancamentos: [
@@ -157,10 +157,14 @@ test('previsto respeita exceções e término dos fixos e usa faturas, não comp
       { id: 4, valor: -60, data: '2026-11-20', tipo: 'despesa', cartaoId: 1, faturaMes: 11, faturaAno: 2026 },
     ],
   };
-  // 1000 − 100 (set) − 0 (out, exceção) − 100 (nov) + 500 − 80 (fatura nov)
-  assert.equal(saldoPrevisto(dados, '2026-11-30'), 1220);
-  // dezembro: fixo terminou; fatura de dez (60) entra
-  assert.equal(saldoPrevisto(dados, '2026-12-31'), 1160);
+  // 1000 − 100 (set) − 0 (out, exceção) − 100 (nov) + 500; faturas em aberto não entram
+  assert.equal(saldoPrevisto(dados, '2026-11-30'), 1300);
+  // dezembro: fixo terminou; fatura de dez continua fora até ser paga
+  assert.equal(saldoPrevisto(dados, '2026-12-31'), 1300);
+  // pagando a fatura de nov (80) em 10/11 pelo Santander, ela passa a contar nessa data
+  const pago = { ...dados, cartoes: [{ ...nubank, faturasPagas: { '2026-11': { pago: true, contaId: 1, valor: 80, data: '2026-11-10' } } }] };
+  assert.equal(saldoPrevisto(pago, '2026-11-09'), 900); // antes do pagamento e do fixo de 10/11
+  assert.equal(saldoPrevisto(pago, '2026-11-30'), 1220);
 });
 
 test('Home e Fluxo usam o mesmo resumo do mês (bug 5)', () => {
@@ -174,8 +178,8 @@ test('Home e Fluxo usam o mesmo resumo do mês (bug 5)', () => {
   const r = resumoPeriodo(dados, '2026-11-01', '2026-11-30');
   assert.equal(r.entradasPrev, 5000); // salário fixo se repete em novembro (último dia)
   assert.equal(r.itens[0].data, '2026-11-30');
-  assert.equal(r.saidasPrev, 40);     // Netflix via fatura de novembro
-  assert.equal(r.faturas.length, 1);
+  assert.equal(r.saidasPrev, 0);      // fatura de novembro em aberto não entra nas saídas
+  assert.equal(r.faturas.length, 1);  // mas aparece na lista para ser paga
 });
 
 test('lista de conta não traz itens de cartão', () => {
@@ -184,4 +188,14 @@ test('lista de conta não traz itens de cartão', () => {
     { id: 2, valor: -10, data: '2026-11-02', tipo: 'despesa', cartaoId: 1 },
   ];
   assert.equal(lancamentosContaNoPeriodo(lanc, '2026-11-01', '2026-11-30').length, 1);
+});
+
+test('fatura paga aparece e conta na data do pagamento', () => {
+  const cartao = { ...nubank, faturasPagas: { '2026-11': { pago: true, contaId: 1, valor: 250, data: '2026-11-03' } } };
+  const lanc = [{ id: 1, valor: -250, data: '2026-10-20', tipo: 'despesa', cartaoId: 1, faturaMes: 10, faturaAno: 2026 }];
+  const f = faturasNoPeriodo([cartao], lanc, '2026-11-01', '2026-11-30');
+  assert.equal(f[0].data, '2026-11-03');
+  const r = resumoPeriodo({ contas, cartoes: [cartao], lancamentos: lanc }, '2026-11-01', '2026-11-30');
+  assert.equal(r.saidasPrev, 250);
+  assert.equal(r.saidasReais, 250);
 });

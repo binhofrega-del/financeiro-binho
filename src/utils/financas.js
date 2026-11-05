@@ -226,6 +226,8 @@ export function totalDosItens(itens) {
 }
 
 // Fatura no formato de "lançamento virtual" usado pelo Fluxo.
+// Data: a do PAGAMENTO quando já foi paga (igual ao Organizze); senão, a do vencimento.
+// _contaNoPrevisto: só faturas pagas com uma conta do app entram em entradas/saídas/previsto.
 export function montarFatura(cartao, lancamentos, fat) {
   const itens = itensDaFatura(lancamentos, cartao, fat);
   const total = totalDosItens(itens);
@@ -236,7 +238,7 @@ export function montarFatura(cartao, lancamentos, fat) {
     id: `fatura-${cartao.id}-${pg.chave}`,
     descricao: `Fatura ${nomeFatura(fat, cartao)}`,
     valor: -valor,
-    data: dataVencimento(fat, cartao),
+    data: (pg.pago && !pg.externo && pg.data) || dataVencimento(fat, cartao),
     tipo: 'despesa',
     categoria: 'Fatura Cartão',
     cartaoId: cartao.id,
@@ -249,22 +251,21 @@ export function montarFatura(cartao, lancamentos, fat) {
     _mesAno: pg.chave,
     _contaIdPagamento: pg.contaId,
     _externo: pg.externo,
+    _contaNoPrevisto: pg.pago && !pg.externo,
     _fatura: fat,
     _totalItens: total,
   };
 }
 
-// Faturas cujo VENCIMENTO cai em [inicio, fim].
+// Faturas cuja data (pagamento, se paga; senão vencimento) cai em [inicio, fim].
 export function faturasNoPeriodo(cartoes, lancamentos, inicio, fim) {
   const out = [];
-  const mFim = mesAnoDaData(fim);
+  // olha 2 meses antes/depois: uma fatura pode ser paga antes ou depois do mês do vencimento
+  const mFim = somarMeses(mesAnoDaData(fim), 2);
   for (const cartao of cartoes) {
-    for (let m = mesAnoDaData(inicio); difMeses(m, mFim) >= 0; m = somarMeses(m, 1)) {
-      const fat = faturaQueVenceEm(m, cartao);
-      const data = dataVencimento(fat, cartao);
-      if (data < inicio || data > fim) continue;
-      const f = montarFatura(cartao, lancamentos, fat);
-      if (f) out.push(f);
+    for (let m = somarMeses(mesAnoDaData(inicio), -2); difMeses(m, mFim) >= 0; m = somarMeses(m, 1)) {
+      const f = montarFatura(cartao, lancamentos, faturaQueVenceEm(m, cartao));
+      if (f && f.data >= inicio && f.data <= fim) out.push(f);
     }
   }
   return out.sort((a, b) => a.data.localeCompare(b.data));
@@ -377,8 +378,9 @@ export function calcularSaldos(dados, { ate = null } = {}) {
   return { porConta, saldoGeral };
 }
 
-// Saldo PREVISTO ao final de `fim`: saldo inicial + todos os lançamentos de conta
-// até `fim` (pagos ou não) − todas as faturas que vencem até `fim`.
+// Saldo PREVISTO ao final de `fim` (mesma lógica do Organizze): saldo inicial + todos os
+// lançamentos de conta até `fim` (pagos ou não) − faturas JÁ PAGAS até `fim`.
+// Fatura em aberto não entra: ela só pesa no previsto quando o pagamento é registrado.
 export function saldoPrevisto(dados, fim) {
   const contas = dados.contas || [];
   const cartoes = dados.cartoes || [];
@@ -391,16 +393,16 @@ export function saldoPrevisto(dados, fim) {
   if (!inicio || inicio > fim) return arred(total);
 
   lancamentosContaNoPeriodo(lancamentos, inicio, fim).forEach((l) => aplicarEfeito(l, add));
-  faturasNoPeriodo(cartoes, lancamentos, inicio, fim).forEach((f) => { if (!f._externo) total -= Math.abs(f.valor); });
+  faturasNoPeriodo(cartoes, lancamentos, inicio, fim).forEach((f) => { if (f._contaNoPrevisto) total -= Math.abs(f.valor); });
   return arred(total);
 }
 
 // Totais de uma lista (já filtrada) de lançamentos + faturas.
-// Transferências não são entrada nem saída.
+// Transferências não são entrada nem saída. Faturas só contam depois de pagas (como no Organizze).
 export function totaisDe(itens, faturas = []) {
   const soma = (arr) => arred(arr.reduce((s, l) => s + Math.abs(l.valor || 0), 0));
   const rec = itens.filter((l) => l.tipo === 'receita');
-  const desp = [...itens.filter((l) => l.tipo === 'despesa'), ...faturas];
+  const desp = [...itens.filter((l) => l.tipo === 'despesa'), ...faturas.filter((f) => f._contaNoPrevisto)];
   return {
     entradasPrev: soma(rec),
     saidasPrev: soma(desp),
