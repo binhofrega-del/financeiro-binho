@@ -28,3 +28,5 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
+          # publica sem guardar histórico no gh-pages (versões antigas do site não ficam no GitHub)
+          force_orphan: true

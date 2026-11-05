@@ -1,6 +1,7 @@
-import { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { initGoogleDrive, saveToDrive, loadFromDrive, signIn, signOut, isSignedIn } from '../services/googleDrive';
+import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import { entrar, sair, jaAutorizou, tokenValido, lerVersao, baixar, enviar, backupDiario, ErroLogin } from '../services/googleDrive';
 import { gerarId, faturaDaCompra, calcularSaldos, chaveDaData, hojeISO } from '../utils/financas';
+import { carimbar, mesclar, mesmoConteudo, novaGeracao } from '../utils/sync';
 
 const AppContext = createContext();
 
@@ -60,109 +61,193 @@ function migrarFaturaParcelados(lancamentos, cartoes) {
 }
 
 function aplicarMigracoes(dados) {
-  const lancamentos = dados.lancamentos.map(l => ({
+  const lancamentos = (dados.lancamentos || []).map(l => ({
     ...l,
     cartaoId: l.cartaoId || null,
     contaId: l.contaId || null,
   }));
-  return { ...dados, lancamentos: migrarFaturaParcelados(lancamentos, dados.cartoes || []) };
+  return {
+    ...dados,
+    contas: dados.contas || [],
+    cartoes: dados.cartoes || [],
+    categorias: dados.categorias || [],
+    lancamentos: migrarFaturaParcelados(lancamentos, dados.cartoes || []),
+    removidos: dados.removidos || {},
+    meta: dados.meta || {},
+  };
 }
 
+const CHAVE_DADOS_INICIAL = 'financeiro-app-dados';
 function carregarDados() {
   try {
-    const salvo = localStorage.getItem('financeiro-app-dados');
+    const salvo = localStorage.getItem(CHAVE_DADOS_INICIAL);
     if (salvo) return aplicarMigracoes(JSON.parse(salvo));
   } catch { /* localStorage indisponível ou corrompido → usa dados iniciais */ }
-  return dadosIniciais;
+  return aplicarMigracoes(dadosIniciais);
 }
 
+const CHAVE_DADOS = 'financeiro-app-dados';
+const CHAVE_VERSAO = 'fin_drive_versao';   // versão do arquivo do Drive que este aparelho já tem
+const CHAVE_PENDENTE = 'fin_pendente';     // há alterações deste aparelho ainda não enviadas
+const CHAVE_BACKUP = 'fin_ultimo_backup';  // dia do último backup diário feito por este aparelho
+const CHAVE_ULTIMA = 'fin_ultima_sync';
+
+const ls = {
+  get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
+  set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* cheio ou bloqueado */ } },
+  del: (k) => { try { localStorage.removeItem(k); } catch { /* ignore */ } },
+};
+
+// Status da sincronização mostrado no ícone da nuvem:
+//   iniciando | sincronizando | sincronizado | pendente | offline | reconectar | desconectado | erro
 export function AppProvider({ children }) {
   const [dados, setDados] = useState(carregarDados);
-  const [driveStatus, setDriveStatus] = useState('iniciando'); // iniciando = verifica token salvo
-  const [autenticado, setAutenticado] = useState(!!localStorage.getItem('fin_binho_token')); // iniciando | desconectado | sincronizando | salvando | conectado | erro
-  const saveTimer = useRef(null);
-  const salvandoLocal = useRef(false);
+  const [driveStatus, setDriveStatus] = useState(() => (tokenValido() ? 'iniciando' : jaAutorizou() ? 'reconectar' : 'desconectado'));
+  const [ultimaSync, setUltimaSync] = useState(() => Number(ls.get(CHAVE_ULTIMA)) || null);
+  const dadosRef = useRef(dados);
+  const rodando = useRef(false);
+  const deNovo = useRef(false);
+  const timer = useRef(null);
+  const mutacoes = useRef(0);
 
-  // Salva no localStorage SEMPRE + Drive imediatamente (sem debounce longo)
+  // Guarda sempre neste aparelho
   useEffect(() => {
-    localStorage.setItem('financeiro-app-dados', JSON.stringify(dados));
-    if (isSignedIn()) {
-      salvandoLocal.current = true;
-      clearTimeout(saveTimer.current);
-      // Salva rápido: 800ms (garante que exclusões chegam ao Drive antes de abrir outro dispositivo)
-      saveTimer.current = setTimeout(async () => {
-        await saveToDrive(dados);
-        salvandoLocal.current = false;
-      }, 800);
-    }
+    dadosRef.current = dados;
+    ls.set(CHAVE_DADOS, JSON.stringify(dados));
   }, [dados]);
 
-  // Inicializa Google Drive — carrega dados só na abertura inicial
-  useEffect(() => {
-    const timer = setTimeout(async () => {
-      try {
-        await initGoogleDrive(
-          (status) => {
-            setDriveStatus(status);
-            // Se falhou ao tentar restaurar sessão → força re-login
-            if (status === 'desconectado' || status === 'erro') {
-              setAutenticado(false);
-            }
-          },
-          (dadosDrive) => {
-            if (!dadosDrive || salvandoLocal.current) return;
-            setDados(aplicarMigracoes(dadosDrive));
-          }
-        );
-      } catch {
-        setDriveStatus('desconectado');
-        setAutenticado(false);
-      }
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, []);
-  // Removido: sync automático ao focar (causava sumir lançamentos recentes)
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization -- usa só refs e setters estáveis
+  const sincronizar = useCallback(async ({ baixarSempre = false } = {}) => {
+    if (rodando.current) { deNovo.current = true; return; }
+    const pendente = ls.get(CHAVE_PENDENTE) === '1';
+    if (!tokenValido()) { setDriveStatus(jaAutorizou() ? 'reconectar' : 'desconectado'); return; }
+    if (navigator.onLine === false) { setDriveStatus('offline'); return; }
 
-  function conectarDrive() {
+    rodando.current = true;
+    const mutacoesNoInicio = mutacoes.current;
     setDriveStatus('sincronizando');
-    setAutenticado(true);
-    signIn();
+    try {
+      const arq = await lerVersao();                 // só a versão, sem baixar o arquivo
+      let atual = dadosRef.current;
+      let remoto = null;
+      if (arq && (baixarSempre || arq.versao !== ls.get(CHAVE_VERSAO))) {
+        remoto = aplicarMigracoes(await baixar(arq.id));
+        const antes = atual;
+        const junto = mesclar(antes, remoto);
+        if (!mesmoConteudo(junto, antes)) {
+          // aplica o que veio do Drive sem perder o que foi feito aqui enquanto baixava
+          setDados(d => (d === antes ? junto : mesclar(d, junto)));
+          atual = junto;
+        }
+      }
+      let versao = arq?.versao ?? null;
+      const precisaEnviar = !arq || pendente || (remoto && !mesmoConteudo(atual, remoto));
+      if (precisaEnviar) {
+        const r = await enviar(atual, arq?.id);
+        versao = r.versao;
+      }
+      ls.set(CHAVE_VERSAO, versao);
+      if (mutacoes.current === mutacoesNoInicio) ls.del(CHAVE_PENDENTE);
+      else deNovo.current = true;
+      const agora = Date.now();
+      ls.set(CHAVE_ULTIMA, String(agora));
+      setUltimaSync(agora);
+      setDriveStatus(ls.get(CHAVE_PENDENTE) === '1' ? 'pendente' : 'sincronizado');
+
+      // backup diário (uma vez por dia por aparelho; falha aqui não atrapalha a sincronização)
+      const hoje = hojeISO();
+      if (ls.get(CHAVE_BACKUP) !== hoje) {
+        backupDiario(atual, hoje).then(() => ls.set(CHAVE_BACKUP, hoje)).catch(() => {});
+      }
+    } catch (e) {
+      if (e instanceof ErroLogin) setDriveStatus('reconectar');
+      else if (navigator.onLine === false) setDriveStatus('offline');
+      else setDriveStatus('erro');
+    } finally {
+      rodando.current = false;
+      if (deNovo.current) {
+        deNovo.current = false;
+        clearTimeout(timer.current);
+        timer.current = setTimeout(() => sincronizar(), 400);
+      }
+    }
+  }, []);
+
+  function agendarEnvio() {
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => sincronizar(), 1500);
+  }
+
+  // Toda alteração feita no app passa por aqui: carimba data/hora e agenda o envio ao Drive
+  function atualizar(fn) {
+    mutacoes.current++;
+    ls.set(CHAVE_PENDENTE, '1');
+    setDados(d => carimbar(d, fn(d)));
+    setDriveStatus(s => (s === 'sincronizando' ? s : tokenValido() ? 'pendente' : jaAutorizou() ? 'reconectar' : 'desconectado'));
+    agendarEnvio();
+  }
+
+  // Ao abrir: busca a versão mais nova do Drive. Ao voltar para o app / reconectar / a cada 2 min: confere de novo.
+  useEffect(() => {
+    if (tokenValido()) sincronizar({ baixarSempre: true });
+    const aoVoltar = () => { if (document.visibilityState === 'visible') sincronizar(); };
+    const aoConectar = () => sincronizar();
+    document.addEventListener('visibilitychange', aoVoltar);
+    window.addEventListener('focus', aoVoltar);
+    window.addEventListener('online', aoConectar);
+    const intervalo = setInterval(() => { if (document.visibilityState === 'visible') sincronizar(); }, 120000);
+    return () => {
+      document.removeEventListener('visibilitychange', aoVoltar);
+      window.removeEventListener('focus', aoVoltar);
+      window.removeEventListener('online', aoConectar);
+      clearInterval(intervalo);
+    };
+  }, [sincronizar]);
+
+  // Login / reconexão (precisa vir de um toque do usuário)
+  async function conectarDrive() {
+    setDriveStatus('sincronizando');
+    try {
+      await entrar();
+      await sincronizar({ baixarSempre: true });
+    } catch {
+      setDriveStatus(jaAutorizou() ? 'reconectar' : 'desconectado');
+    }
   }
 
   function desconectarDrive() {
-    signOut();
-    setAutenticado(false);
+    sair();
+    ls.del(CHAVE_VERSAO);
     setDriveStatus('desconectado');
   }
 
-  async function sincronizarDrive() {
-    setDriveStatus('sincronizando');
-    try {
-      const dadosDrive = await loadFromDrive();
-      if (dadosDrive) { setDados(aplicarMigracoes(dadosDrive)); setDriveStatus('conectado'); }
-    } catch { setDriveStatus('erro'); }
+  function sincronizarDrive() {
+    return sincronizar({ baixarSempre: true });
   }
+
+  // Primeira vez neste aparelho, sem dados e sem login → tela de login
+  const precisaLogin = !jaAutorizou() && dados.lancamentos.length === 0 && dados.contas.length === 0;
 
   // CONTAS
   function adicionarConta(conta) {
-    setDados(d => ({ ...d, contas: [...d.contas, { ...conta, id: gerarId() }] }));
+    atualizar(d => ({ ...d, contas: [...d.contas, { ...conta, id: gerarId() }] }));
   }
   function editarConta(id, conta) {
-    setDados(d => ({ ...d, contas: d.contas.map(c => c.id === id ? { ...c, ...conta } : c) }));
+    atualizar(d => ({ ...d, contas: d.contas.map(c => c.id === id ? { ...c, ...conta } : c) }));
   }
   function removerConta(id) {
-    setDados(d => ({ ...d, contas: d.contas.filter(c => c.id !== id) }));
+    atualizar(d => ({ ...d, contas: d.contas.filter(c => c.id !== id) }));
   }
 
   // CARTÕES
   function adicionarCartao(cartao) {
-    setDados(d => ({ ...d, cartoes: [...d.cartoes, { ...cartao, id: gerarId() }] }));
+    atualizar(d => ({ ...d, cartoes: [...d.cartoes, { ...cartao, id: gerarId() }] }));
   }
   function editarCartao(id, cartao) {
-    setDados(d => ({ ...d, cartoes: d.cartoes.map(c => c.id === id ? { ...c, ...cartao } : c) }));
+    atualizar(d => ({ ...d, cartoes: d.cartoes.map(c => c.id === id ? { ...c, ...cartao } : c) }));
   }
   function removerCartao(id) {
-    setDados(d => ({ ...d, cartoes: d.cartoes.filter(c => c.id !== id) }));
+    atualizar(d => ({ ...d, cartoes: d.cartoes.filter(c => c.id !== id) }));
   }
 
   // LANÇAMENTOS
@@ -170,22 +255,22 @@ export function AppProvider({ children }) {
     const id = lanc._id || gerarId();
     // eslint-disable-next-line no-unused-vars
     const { _id, ...resto } = lanc;
-    setDados(d => ({ ...d, lancamentos: [...d.lancamentos, { ...resto, id }] }));
+    atualizar(d => ({ ...d, lancamentos: [...d.lancamentos, { ...resto, id }] }));
   }
   // Adiciona várias parcelas de uma vez com IDs únicos garantidos
   function adicionarVariosLancamentos(lista) {
     const comIds = lista.map(l => ({ ...l, id: gerarId() }));
-    setDados(d => ({ ...d, lancamentos: [...d.lancamentos, ...comIds] }));
+    atualizar(d => ({ ...d, lancamentos: [...d.lancamentos, ...comIds] }));
   }
   function editarLancamento(id, lanc) {
-    setDados(d => ({ ...d, lancamentos: d.lancamentos.map(l => l.id === id ? { ...l, ...lanc } : l) }));
+    atualizar(d => ({ ...d, lancamentos: d.lancamentos.map(l => l.id === id ? { ...l, ...lanc } : l) }));
   }
   function removerLancamento(id) {
-    setDados(d => ({ ...d, lancamentos: d.lancamentos.filter(l => l.id !== id) }));
+    atualizar(d => ({ ...d, lancamentos: d.lancamentos.filter(l => l.id !== id) }));
   }
   // Remove este lançamento + todos os futuros do mesmo grupo (parcela >= atual)
   function removerParcelasDoGrupo(grupoId, parcelaAtual) {
-    setDados(d => ({
+    atualizar(d => ({
       ...d,
       lancamentos: d.lancamentos.filter(l =>
         !(l.grupoId === grupoId && l.parcela >= parcelaAtual)
@@ -193,14 +278,14 @@ export function AppProvider({ children }) {
     }));
   }
   function togglePago(id) {
-    setDados(d => ({
+    atualizar(d => ({
       ...d,
       lancamentos: d.lancamentos.map(l => l.id === id ? { ...l, pago: !l.pago } : l)
     }));
   }
   // Paga fatura: marca como paga e registra qual conta/valor (sem criar lançamento extra)
   function pagarFatura(cartaoId, mesAno, contaId, totalFatura) {
-    setDados(d => ({
+    atualizar(d => ({
       ...d,
       cartoes: d.cartoes.map(c => {
         if (c.id !== cartaoId) return c;
@@ -212,7 +297,7 @@ export function AppProvider({ children }) {
 
   // Desfaz pagamento de fatura
   function desfazerFatura(cartaoId, mesAno) {
-    setDados(d => ({
+    atualizar(d => ({
       ...d,
       cartoes: d.cartoes.map(c => {
         if (c.id !== cartaoId) return c;
@@ -224,7 +309,7 @@ export function AppProvider({ children }) {
 
   // Mantido para compatibilidade
   function toggleFaturaPaga(cartaoId, mesAno) {
-    setDados(d => ({
+    atualizar(d => ({
       ...d,
       cartoes: d.cartoes.map(c => {
         if (c.id !== cartaoId) return c;
@@ -238,7 +323,7 @@ export function AppProvider({ children }) {
 
   // Adiciona um mês como "exceção" no fixo (não mostrar naquele mês)
   function adicionarExcecaoFixo(id, mesAno) {
-    setDados(d => ({
+    atualizar(d => ({
       ...d,
       lancamentos: d.lancamentos.map(l => {
         if (l.id !== id) return l;
@@ -250,7 +335,7 @@ export function AppProvider({ children }) {
 
   // Para o fixo num mês específico (não mostrar a partir desse mês)
   function pararFixoNoMes(id, dataParar) {
-    setDados(d => ({
+    atualizar(d => ({
       ...d,
       lancamentos: d.lancamentos.map(l =>
         l.id === id ? { ...l, fixoFimData: dataParar } : l
@@ -260,7 +345,7 @@ export function AppProvider({ children }) {
 
   // Ao "Alterar todos os próximos": limpa exceções e remove entradas individuais vinculadas
   function limparExcecoesFixo(id) {
-    setDados(d => ({
+    atualizar(d => ({
       ...d,
       lancamentos: d.lancamentos
         .filter(l => l._excecaoDeId !== id)      // remove entradas individuais de exceção
@@ -275,7 +360,7 @@ export function AppProvider({ children }) {
   // No mês de criação o status fica no próprio `pago` do lançamento;
   // nos demais meses, em `pagoPorMes`.
   function setPagoFixo(id, mesAno, valor) {
-    setDados(d => ({
+    atualizar(d => ({
       ...d,
       lancamentos: d.lancamentos.map(l => {
         if (l.id !== id) return l;
@@ -291,25 +376,29 @@ export function AppProvider({ children }) {
 
   // Exclui um fixo inteiro (todas as ocorrências) e as edições avulsas ligadas a ele
   function removerFixo(id) {
-    setDados(d => ({
+    atualizar(d => ({
       ...d,
       lancamentos: d.lancamentos.filter(l => l.id !== id && l._excecaoDeId !== id),
     }));
   }
 
   // Troca TODOS os dados (importação do Organizze / restauração de backup)
+  // Vale como "nova geração": nos outros aparelhos substitui tudo em vez de juntar.
   function substituirDados(novos) {
-    setDados(aplicarMigracoes({
+    mutacoes.current++;
+    ls.set(CHAVE_PENDENTE, '1');
+    setDados(novaGeracao(aplicarMigracoes({
       contas: novos.contas || [],
       cartoes: novos.cartoes || [],
       lancamentos: novos.lancamentos || [],
       categorias: novos.categorias?.length ? novos.categorias : dadosIniciais.categorias,
-    }));
+    })));
+    agendarEnvio();
   }
 
   // CATEGORIAS
   function adicionarCategoria(cat) {
-    setDados(d => ({ ...d, categorias: [...d.categorias, { ...cat, id: gerarId() }] }));
+    atualizar(d => ({ ...d, categorias: [...d.categorias, { ...cat, id: gerarId() }] }));
   }
 
   // Saldo realizado de cada conta — regra única em utils/financas.js
@@ -327,7 +416,7 @@ export function AppProvider({ children }) {
       adicionarConta, editarConta, removerConta,
       adicionarCartao, editarCartao, removerCartao,
       saldoInicialTotal,
-      driveStatus, autenticado, conectarDrive, desconectarDrive, sincronizarDrive,
+      driveStatus, ultimaSync, precisaLogin, conectarDrive, desconectarDrive, sincronizarDrive,
       adicionarExcecaoFixo, limparExcecoesFixo, pararFixoNoMes, removerFixo, setPagoFixo,
       adicionarLancamento, adicionarVariosLancamentos, editarLancamento, removerLancamento, removerParcelasDoGrupo, togglePago, toggleFaturaPaga, pagarFatura, desfazerFatura,
       adicionarCategoria, substituirDados,

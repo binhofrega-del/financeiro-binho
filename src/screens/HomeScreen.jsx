@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { Eye, EyeOff, ChevronRight, TrendingUp, TrendingDown, Plus, CloudOff, Cloud, RefreshCw, Loader } from 'lucide-react';
+import { Eye, EyeOff, ChevronRight, TrendingUp, TrendingDown, Plus } from 'lucide-react';
+import IconeSync from '../components/IconeSync';
+import { ROTULO_SYNC } from '../utils/rotulosSync';
 import { useApp } from '../context/AppContext';
 import { formatarMoeda, nomeMes } from '../utils/formatters';
 import ModalLancamento from '../components/ModalLancamento';
@@ -48,16 +50,13 @@ export default function HomeScreen({ setAba, irParaFluxo }) {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            {/* Botão Google Drive */}
+            {/* Estado da sincronização com o Google Drive */}
             <button
-              onClick={() => driveStatus === 'desconectado' || driveStatus === 'erro' ? conectarDrive() : driveStatus === 'conectado' ? sincronizarDrive() : null}
-              title={driveStatus === 'conectado' ? 'Sincronizado com Google Drive' : driveStatus === 'desconectado' ? 'Conectar Google Drive' : driveStatus}
+              onClick={() => (driveStatus === 'reconectar' || driveStatus === 'desconectado' ? conectarDrive() : sincronizarDrive())}
+              title={ROTULO_SYNC[driveStatus] || driveStatus}
+              aria-label={ROTULO_SYNC[driveStatus] || driveStatus}
               style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 20, padding: '6px 10px', cursor: 'pointer', color: 'white', display: 'flex', alignItems: 'center', gap: 4 }}>
-              {driveStatus === 'iniciando' && <Loader size={16} style={{ opacity: 0.6 }} />}
-              {driveStatus === 'desconectado' && <CloudOff size={16} />}
-              {driveStatus === 'conectado' && <Cloud size={16} color="#86efac" />}
-              {(driveStatus === 'sincronizando' || driveStatus === 'salvando') && <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} />}
-              {driveStatus === 'erro' && <CloudOff size={16} color="#fca5a5" />}
+              <IconeSync status={driveStatus} />
             </button>
             <button onClick={() => setOcultarSaldo(!ocultarSaldo)}
               style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 20, padding: '6px 10px', cursor: 'pointer', color: 'white' }}>

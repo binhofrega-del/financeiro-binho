@@ -17,7 +17,7 @@ export default function ImportarScreen({ onVoltar }) {
   const [resultado, setResultado] = useState(null);
   const [msgRestaurar, setMsgRestaurar] = useState('');
 
-  const driveOk = driveStatus === 'conectado' || driveStatus === 'salvando' || driveStatus === 'sincronizando';
+  const driveOk = ['sincronizado', 'sincronizando', 'pendente', 'iniciando'].includes(driveStatus);
 
   async function ler(file = arquivo) {
     if (!file) return;

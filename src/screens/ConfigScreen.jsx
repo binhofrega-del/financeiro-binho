@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Plus, Pencil, Trash2, X, Check, CreditCard, Wallet, ChevronRight, Upload } from 'lucide-react';
 import ImportarScreen from './ImportarScreen';
+import IconeSync from '../components/IconeSync';
+import { ROTULO_SYNC } from '../utils/rotulosSync';
 import { useApp } from '../context/AppContext';
 import { VERSAO, BUILD_DATA, BUILD_COMMIT } from '../utils/versao';
 import { formatarMoeda } from '../utils/formatters';
@@ -11,7 +13,8 @@ const contaVazia = { nome: '', tipo: 'Conta corrente', cor: '#16a34a', icone: ''
 const cartaoVazio = { nome: '', banco: '', cor: '#7c3aed', limite: '', diaVencimento: '', diaFechamento: '' };
 
 export default function ConfigScreen() {
-  const { contas, cartoes, adicionarConta, editarConta, removerConta, adicionarCartao, editarCartao, removerCartao } = useApp();
+  const { contas, cartoes, adicionarConta, editarConta, removerConta, adicionarCartao, editarCartao, removerCartao,
+    driveStatus, ultimaSync, conectarDrive, sincronizarDrive, desconectarDrive } = useApp();
   const [secao, setSecao] = useState('principal'); // principal | contas | cartoes | novaConta | novoCartao | editConta | editCartao
   const [form, setForm] = useState({});
   const [editId, setEditId] = useState(null);
@@ -47,6 +50,34 @@ export default function ConfigScreen() {
         <MenuItem icon={<Wallet size={20} color="#16a34a" />} label="Minhas Contas" sub={`${contas.length} conta(s)`} onClick={() => setSecao('contas')} />
         <MenuItem icon={<CreditCard size={20} color="#7c3aed" />} label="Cartões de Crédito" sub={`${cartoes.length} cartão(ões)`} onClick={() => setSecao('cartoes')} />
         <MenuItem icon={<Upload size={20} color="#1d4ed8" />} label="Importar e backup" sub="Importar do Organizze · baixar/restaurar backup" onClick={() => setSecao('importar')} />
+
+        {/* Sincronização com o Google Drive */}
+        <div style={card}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: '#16a34a', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <IconeSync status={driveStatus} size={18} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <p style={{ fontSize: 14, fontWeight: 700, color: '#111' }}>{ROTULO_SYNC[driveStatus] || driveStatus}</p>
+              <p style={{ fontSize: 11, color: '#9ca3af' }}>
+                {ultimaSync ? `Última sincronização: ${new Date(ultimaSync).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : 'Ainda não sincronizado neste aparelho'}
+              </p>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+            {driveStatus === 'reconectar' || driveStatus === 'desconectado' ? (
+              <button onClick={conectarDrive} style={{ ...btnSync, background: '#16a34a', color: 'white', border: 'none' }}>Conectar Google</button>
+            ) : (
+              <button onClick={sincronizarDrive} style={btnSync}>Sincronizar agora</button>
+            )}
+            {driveStatus !== 'desconectado' && (
+              <button onClick={() => { if (confirm('Desconectar do Google Drive? Os dados continuam neste aparelho.')) desconectarDrive(); }} style={{ ...btnSync, color: '#dc2626', borderColor: '#fecaca' }}>Desconectar</button>
+            )}
+          </div>
+          <p style={{ fontSize: 11, color: '#9ca3af', marginTop: 10, lineHeight: 1.4 }}>
+            Backup automático: uma cópia por dia no seu Google Drive (últimas 15).
+          </p>
+        </div>
 
         <div style={{ ...card, marginTop: 8 }}>
           <p style={{ fontSize: 11, color: '#aaa', textAlign: 'center' }}>Controle Financeiro Pessoal</p>
@@ -228,6 +259,7 @@ const card = { background: 'white', borderRadius: 16, padding: 16, boxShadow: '0
 const rowStyle = { display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0' };
 const iconeStyle = { width: 38, height: 38, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: 12, flexShrink: 0 };
 const iconBtn = { background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex' };
+const btnSync = { flex: 1, background: 'white', color: '#16a34a', border: '1.5px solid #bbf7d0', borderRadius: 10, padding: '9px 10px', fontSize: 13, fontWeight: 700, cursor: 'pointer' };
 const btnAdd = { width: '100%', border: '1.5px dashed #16a34a', background: 'none', color: '#16a34a', borderRadius: 12, padding: 12, fontWeight: 600, fontSize: 14, cursor: 'pointer', marginTop: 12 };
 const btnSalvar = { width: '100%', background: '#16a34a', color: 'white', border: 'none', borderRadius: 14, padding: 14, fontSize: 16, fontWeight: 700, cursor: 'pointer', marginTop: 12 };
 const labelStyle = { fontSize: 12, color: '#888', fontWeight: 600, display: 'block', marginBottom: 4 };

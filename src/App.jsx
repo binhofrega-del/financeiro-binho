@@ -6,16 +6,17 @@ import FluxoScreen from './screens/FluxoScreen';
 import CartoesScreen from './screens/CartoesScreen';
 import ConfigScreen from './screens/ConfigScreen';
 import LoginScreen from './screens/LoginScreen';
+import AvisoSync from './components/AvisoSync';
+import AvisoAtualizacao from './components/AvisoAtualizacao';
 
 function AppInner() {
   const [aba, setAba] = useState('home');
   const [filtroFluxo, setFiltroFluxo] = useState(null);
-  const { driveStatus, autenticado, conectarDrive } = useApp();
+  const { driveStatus, precisaLogin, conectarDrive } = useApp();
 
-  // Mostra login APENAS se nunca autenticou — sync/salvamento não interrompe o app
-  const mostrarLogin = !autenticado;
-
-  if (mostrarLogin) {
+  // Login só na primeira vez neste aparelho (sem dados e sem autorização).
+  // Sessão expirada não trava o app: aparece um aviso para reconectar.
+  if (precisaLogin) {
     return (
       <div style={{ height: '100dvh', maxWidth: 480, margin: '0 auto' }}>
         <LoginScreen onLogin={conectarDrive} status={driveStatus} />
@@ -48,6 +49,8 @@ function AppInner() {
       boxShadow: '0 0 40px rgba(0,0,0,0.15)',
       position: 'relative',
     }}>
+      <AvisoAtualizacao />
+      <AvisoSync />
       {telas[aba]}
       <BottomNav aba={aba} setAba={mudarAba} />
     </div>
