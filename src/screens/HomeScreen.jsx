@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext';
 import { formatarMoeda, nomeMes } from '../utils/formatters';
 import ModalLancamento from '../components/ModalLancamento';
 import IconeBanco from '../components/IconeBanco';
+import { VERSAO_COMPLETA } from '../utils/versao';
 import {
   hojeISO, mesAnoDaData, inicioDoMes, fimDoMes, resumoPeriodo,
   faturaAtual, itensDaFatura, totalDosItens, limiteUsado, diasAteVencimento,
@@ -184,6 +185,11 @@ export default function HomeScreen({ setAba, irParaFluxo }) {
             </div>
           </div>
         </div>
+
+        {/* Versão — para saber se o celular já pegou a atualização */}
+        <p style={{ textAlign: 'center', fontSize: 11, color: '#9ca3af', padding: '2px 0 72px' }}>
+          Financeiro Binho {VERSAO_COMPLETA}
+        </p>
 
       </div>
 

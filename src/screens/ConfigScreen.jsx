@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Plus, Pencil, Trash2, X, Check, CreditCard, Wallet, ChevronRight } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { VERSAO, BUILD_DATA, BUILD_COMMIT } from '../utils/versao';
 import { formatarMoeda } from '../utils/formatters';
 
 const CORES = ['#e11d48','#16a34a','#1d4ed8','#7c3aed','#f97316','#000000','#0891b2','#ca8a04','#6b7280','#22c55e'];
@@ -45,8 +46,10 @@ export default function ConfigScreen() {
 
         <div style={{ ...card, marginTop: 8 }}>
           <p style={{ fontSize: 11, color: '#aaa', textAlign: 'center' }}>Controle Financeiro Pessoal</p>
-          <p style={{ fontSize: 13, color: '#16a34a', fontWeight: 700, textAlign: 'center', marginTop: 4 }}>v1.0.0</p>
-          <p style={{ fontSize: 11, color: '#ddd', textAlign: 'center', marginTop: 2 }}>Junho 2026</p>
+          <p style={{ fontSize: 13, color: '#16a34a', fontWeight: 700, textAlign: 'center', marginTop: 4 }}>v{VERSAO}</p>
+          <p style={{ fontSize: 11, color: '#9ca3af', textAlign: 'center', marginTop: 2 }}>
+            Atualizado em {BUILD_DATA}{BUILD_COMMIT ? ` · ${BUILD_COMMIT}` : ''}
+          </p>
         </div>
       </div>
     </div>
