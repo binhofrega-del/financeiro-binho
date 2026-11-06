@@ -9,7 +9,7 @@ import IconeBanco from '../components/IconeBanco';
 import { VERSAO_COMPLETA } from '../utils/versao';
 import {
   hojeISO, mesAnoDaData, inicioDoMes, fimDoMes, resumoPeriodo,
-  faturaAtual, itensDaFatura, totalDosItens, limiteUsado, diasAteVencimento,
+  faturaAtual, itensDaFatura, totalDosItens, limiteUsado, proximaFaturaAPagar, situacaoVencimento,
 } from '../utils/financas';
 
 export default function HomeScreen({ setAba, irParaFluxo }) {
@@ -125,7 +125,9 @@ export default function HomeScreen({ setAba, irParaFluxo }) {
               const usado = limiteUsado(cartao, lancamentos, hoje);
               const disponivel = Math.max(cartao.limite - usado, 0);
               const pct = cartao.limite > 0 ? Math.min(Math.max((usado / cartao.limite) * 100, 0), 100) : 0;
-              const diasVenc = diasAteVencimento(cartao, hoje);
+              // vencimento da próxima fatura em aberto (igual "Venc. 7/12" do Organizze)
+              const venc = situacaoVencimento(cartao, proximaFaturaAPagar(cartao, lancamentos, hoje), hoje);
+              const diasVenc = venc.dias;
 
               return (
                 // Fix 2: clicar no cartão vai para a aba Cartões
@@ -155,9 +157,9 @@ export default function HomeScreen({ setAba, irParaFluxo }) {
                     </div>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0 4px', fontSize: 12, color: '#888' }}>
-                    <span>Vencimento: dia {cartao.diaVencimento}</span>
-                    <span style={{ color: diasVenc <= 5 ? '#dc2626' : '#d97706', fontWeight: 600 }}>
-                      {diasVenc === 0 ? '⚠ Vence hoje' : `⚠ ${diasVenc} dias`}
+                    <span>Vencimento: {venc.data.slice(8, 10)}/{venc.data.slice(5, 7)}</span>
+                    <span style={{ color: venc.paga ? '#16a34a' : diasVenc <= 3 ? '#dc2626' : diasVenc <= 7 ? '#d97706' : '#16a34a', fontWeight: 600 }}>
+                      {venc.paga ? '✓ paga' : diasVenc < 0 ? `⚠ vencida há ${-diasVenc} dias` : diasVenc === 0 ? '⚠ vence hoje' : `${diasVenc <= 7 ? '⚠ ' : ''}${diasVenc} dias`}
                     </span>
                   </div>
                 </div>

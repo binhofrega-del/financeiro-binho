@@ -5,8 +5,9 @@ import {
   addMeses, hojeISO, intervaloDoPeriodo, ocorrenciasFixo, lancamentosContaNoPeriodo,
   itensDaFatura, totalDosItens, faturasNoPeriodo, calcularSaldos, saldoPrevisto,
   resumoPeriodo, dividirEmParcelas, dataDaParcela, limiteUsado, diasAteVencimento,
-  faturaDaCompra, gerarId,
+  faturaDaCompra, gerarId, situacaoVencimento, proximaFaturaAPagar,
 } from '../src/utils/financas.js';
+import { absorverOcorrenciasSoltas } from '../src/utils/migracoes.js';
 
 const nubank = { id: 1, nome: 'Roxinho', banco: 'Nubank', limite: 5000, diaFechamento: 8, diaVencimento: 15 };
 const contas = [
@@ -198,4 +199,31 @@ test('fatura paga aparece e conta na data do pagamento', () => {
   const r = resumoPeriodo({ contas, cartoes: [cartao], lancamentos: lanc }, '2026-11-01', '2026-11-30');
   assert.equal(r.saidasPrev, 250);
   assert.equal(r.saidasReais, 250);
+});
+
+// ── Vencimento da fatura certa ──────────────────────────────────────────────
+test('vencimento conta pela fatura em aberto, não pelo próximo dia 7 do calendário', () => {
+  const cartao = { id: 1, limite: 1000, diaFechamento: 30, diaVencimento: 7, faturasPagas: { '2026-11': { pago: true, contaId: 1, valor: 100, data: '2026-11-03' } } };
+  const lanc = [
+    { id: 1, valor: -100, data: '2026-10-10', tipo: 'despesa', cartaoId: 1, faturaMes: 9, faturaAno: 2026 },  // vence 07/11 (paga)
+    { id: 2, valor: -794.21, data: '2026-11-02', tipo: 'despesa', cartaoId: 1, faturaMes: 10, faturaAno: 2026 }, // vence 07/12
+  ];
+  const prox = proximaFaturaAPagar(cartao, lanc, '2026-11-05');
+  assert.deepEqual(prox, { ano: 2026, mes: 10 });
+  assert.deepEqual(situacaoVencimento(cartao, prox, '2026-11-05'), { data: '2026-12-07', dias: 32, paga: false });
+  // a fatura de novembro (já paga) aparece como paga
+  assert.equal(situacaoVencimento(cartao, { ano: 2026, mes: 9 }, '2026-11-05').paga, true);
+  // entre 01 e 07/12: a fatura de dezembro (fechada, não paga) continua sendo a próxima a pagar
+  assert.deepEqual(proximaFaturaAPagar(cartao, lanc, '2026-12-03'), { ano: 2026, mes: 10 });
+  assert.equal(situacaoVencimento(cartao, { ano: 2026, mes: 10 }, '2026-12-09').dias, -2); // vencida
+});
+
+test('reparo: ocorrência solta no fim do export volta para o fixo (e sai do limite)', () => {
+  const fixo = { id: 1, descricao: 'Netflix', categoria: 'Assinaturas', valor: -20.9, data: '2026-11-27', tipo: 'despesa', cartaoId: 1, fixo: true, faturaMes: 11, faturaAno: 2026, fixoFimData: '2029-11' };
+  const solta = { id: 2, descricao: 'Netflix', categoria: 'Assinaturas', valor: -20.9, data: '2029-11-27', tipo: 'despesa', cartaoId: 1, fixo: false, faturaMes: 10, faturaAno: 2029 };
+  const outra = { id: 3, descricao: 'Netflix', categoria: 'Assinaturas', valor: -20.9, data: '2027-03-27', tipo: 'despesa', cartaoId: 1, fixo: false }; // não é a continuação
+  const r = absorverOcorrenciasSoltas([fixo, solta, outra]);
+  assert.deepEqual(r.map((l) => l.id), [1, 3]);
+  assert.equal(r[0].fixoFimData, '2029-12');
+  assert.deepEqual(absorverOcorrenciasSoltas(r), r); // idempotente
 });

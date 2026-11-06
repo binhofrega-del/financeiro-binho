@@ -142,10 +142,12 @@ export function converterOrganizze(abas, opcoes = {}) {
         const categoria = String(col(r, 'Categoria')).trim();
         if (!categoria && /^fatura\s/i.test(descricao)) continue; // projeção da fatura
         const venc = lerMesAno(col(r, 'Fatura'));
+        // sem "Fatura" (fim do período exportado): calcula pela data, mas deixa a série do fixo decidir
         const fat = venc ? faturaQueVenceEm(venc, cartao) : faturaDaCompra(data, cartao.diaFechamento);
+        const fatInferida = !venc;
         linhas.push({
           aba: nomeAba, data, descricao, categoria: categoria || 'Outros', valor: lerValor(col(r, 'Valor')),
-          pago: true, cartaoId: cartao.id, fat,
+          pago: true, cartaoId: cartao.id, fat, fatInferida,
           observacao: String(col(r, 'Informações adicionais', 'Informacoes adicionais')).trim(),
           tags: String(col(r, 'Tags')).trim(),
         });
@@ -291,7 +293,7 @@ export function converterOrganizze(abas, opcoes = {}) {
         const base = seg[0];
         const k = difMeses(mesAnoDaData(base.data), mesAnoDaData(l.data));
         const ok = l.valor === base.valor && addMeses(base.data, k) === l.data &&
-          (!l.cartaoId || mesmoMes(somarMeses(base.fat, k), l.fat)) &&
+          (!l.cartaoId || l.fatInferida || mesmoMes(somarMeses(base.fat, k), l.fat)) &&
           difMeses(mesAnoDaData(seg[seg.length - 1].data), mesAnoDaData(l.data)) <= 3;
         if (ok) { seg.push(l); continue; }
         segmentos.push(seg);
@@ -321,7 +323,7 @@ export function converterOrganizze(abas, opcoes = {}) {
 
   // 6) Monta os lançamentos finais
   // eslint-disable-next-line no-unused-vars
-  const limpar = ({ aba, fat, _parcela, ...l }) => {
+  const limpar = ({ aba, fat, fatInferida, _parcela, ...l }) => {
     const out = { ...l, id: gerarId(), tipo: l.tipo || tipoDe(l) };
     out.valor = out.tipo === 'despesa' ? -Math.abs(l.valor) : Math.abs(l.valor);
     if (l.cartaoId) { out.faturaMes = fat.mes; out.faturaAno = fat.ano; out.contaId = null; } else { out.cartaoId = null; }

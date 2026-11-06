@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useRef, useCallback } f
 import { entrar, sair, jaAutorizou, tokenValido, lerVersao, baixar, enviar, backupDiario, ErroLogin } from '../services/googleDrive';
 import { gerarId, faturaDaCompra, calcularSaldos, chaveDaData, hojeISO } from '../utils/financas';
 import { carimbar, mesclar, mesmoConteudo, novaGeracao } from '../utils/sync';
+import { absorverOcorrenciasSoltas } from '../utils/migracoes';
 
 const AppContext = createContext();
 
@@ -71,7 +72,7 @@ function aplicarMigracoes(dados) {
     contas: dados.contas || [],
     cartoes: dados.cartoes || [],
     categorias: dados.categorias || [],
-    lancamentos: migrarFaturaParcelados(lancamentos, dados.cartoes || []),
+    lancamentos: absorverOcorrenciasSoltas(migrarFaturaParcelados(lancamentos, dados.cartoes || [])),
     removidos: dados.removidos || {},
     meta: dados.meta || {},
   };

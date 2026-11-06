@@ -6,7 +6,7 @@ import DetalheModal from '../components/DetalheModal';
 import { useAcoesLancamento } from '../hooks/useAcoesLancamento';
 import {
   hojeISO, somarMeses, mesmoMes, faturaAtual, itensDaFatura, totalDosItens,
-  infoPagamentoFatura, limiteUsado, diasAteVencimento, dataFechamento, dataVencimento, nomeFatura,
+  infoPagamentoFatura, limiteUsado, situacaoVencimento, dataFechamento, dataVencimento, nomeFatura,
 } from '../utils/financas';
 
 const brData = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
@@ -79,7 +79,8 @@ export default function CartoesScreen({ setAba }) {
 
   if (!cartao) return <SemCartao setAba={setAba} />;
 
-  const diasVenc = diasAteVencimento(cartao, hoje);
+  // vencimento da FATURA EXIBIDA (não do próximo dia 7 do calendário)
+  const venc = situacaoVencimento(cartao, fat, hoje);
 
   function formatarDiaHeader(dataStr) {
     const [ano, mes, dia] = dataStr.split('-');
@@ -124,10 +125,8 @@ export default function CartoesScreen({ setAba }) {
         <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
           <div style={{ flex: 1, background: 'white', borderRadius: 12, padding: 12, boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
             <p style={{ fontSize: 10, color: '#aaa', fontWeight: 600, textTransform: 'uppercase' }}>Vencimento</p>
-            <p style={{ fontSize: 15, fontWeight: 700, color: '#111', marginTop: 2 }}>Dia {cartao.diaVencimento}</p>
-            <p style={{ fontSize: 11, color: diasVenc <= 3 ? '#dc2626' : diasVenc <= 7 ? '#d97706' : '#16a34a', fontWeight: 600, marginTop: 2 }}>
-              {diasVenc === 0 ? '⚠ Vence hoje!' : `${diasVenc} dias`}
-            </p>
+            <p style={{ fontSize: 15, fontWeight: 700, color: '#111', marginTop: 2 }}>{venc.data.slice(8, 10)}/{venc.data.slice(5, 7)}</p>
+            <TextoVencimento venc={venc} temValor={totalFatura > 0} />
           </div>
           <div style={{ flex: 1, background: 'white', borderRadius: 12, padding: 12, boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
             <p style={{ fontSize: 10, color: '#aaa', fontWeight: 600, textTransform: 'uppercase' }}>Pago</p>
@@ -226,6 +225,17 @@ export default function CartoesScreen({ setAba }) {
       {acoes.elementos}
     </div>
   );
+}
+
+// "32 dias" / "vence hoje" / "vencida há 3 dias" / "✓ paga" — com cor pela proximidade
+function TextoVencimento({ venc, temValor }) {
+  let texto, cor;
+  if (venc.paga) { texto = '✓ paga'; cor = '#16a34a'; }
+  else if (!temValor) { texto = venc.dias < 0 ? 'sem valor' : `em ${venc.dias} dias`; cor = '#9ca3af'; }
+  else if (venc.dias < 0) { texto = `vencida há ${-venc.dias} ${-venc.dias === 1 ? 'dia' : 'dias'}`; cor = '#dc2626'; }
+  else if (venc.dias === 0) { texto = '⚠ vence hoje'; cor = '#dc2626'; }
+  else { texto = `${venc.dias} ${venc.dias === 1 ? 'dia' : 'dias'}`; cor = venc.dias <= 3 ? '#dc2626' : venc.dias <= 7 ? '#d97706' : '#16a34a'; }
+  return <p style={{ fontSize: 11, color: cor, fontWeight: 600, marginTop: 2 }}>{texto}</p>;
 }
 
 function SemCartao({ setAba }) {

@@ -296,6 +296,25 @@ export function limiteUsado(cartao, lancamentos, hoje = hojeISO()) {
   return arred(usado);
 }
 
+// Situação do vencimento de UMA fatura: dias até vencer (negativo = vencida) e se já foi paga.
+export function situacaoVencimento(cartao, fat, hoje = hojeISO()) {
+  const data = dataVencimento(fat, cartao);
+  return { data, dias: diasEntre(hoje, data), paga: infoPagamentoFatura(cartao, fat).pago };
+}
+
+// Próxima fatura a pagar: a mais antiga ainda em aberto (com valor) entre as recentes;
+// se não houver nenhuma, a fatura aberta hoje. É a que a Home avisa ("Venc. 7/12").
+export function proximaFaturaAPagar(cartao, lancamentos, hoje = hojeISO()) {
+  const atual = faturaAtual(cartao, hoje);
+  for (let i = -3; i <= 0; i++) {
+    const fat = somarMeses(atual, i);
+    if (infoPagamentoFatura(cartao, fat).pago) continue;
+    if (totalDosItens(itensDaFatura(lancamentos, cartao, fat)) > 0) return fat;
+  }
+  return atual;
+}
+
+// (antigo) dias até o próximo "dia de vencimento" do calendário, sem olhar a fatura
 export function diasAteVencimento(cartao, hoje = hojeISO()) {
   const ma = mesAnoDaData(hoje);
   let venc = diaNoMes(ma, cartao.diaVencimento);
