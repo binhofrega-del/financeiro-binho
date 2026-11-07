@@ -1,7 +1,7 @@
 // Testes da junção entre aparelhos. Rodar com: npm test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { carimbar, mesclar, novaGeracao } from '../src/utils/sync.js';
+import { carimbar, mesclar, novaGeracao, garantirGeracao } from '../src/utils/sync.js';
 
 const base = () => ({
   contas: [{ id: 1, nome: 'Santander', saldo: 0 }],
@@ -11,6 +11,7 @@ const base = () => ({
     { id: 101, descricao: 'Água', valor: -80, pago: false },
   ],
   categorias: [{ id: 1, nome: 'Outros' }],
+  meta: { geracao: 'g1', geracaoEm: 0 }, // dados já sincronizados nesta versão (mesma origem)
 });
 
 // simula uma mutação do app: devolve novo estado já carimbado
@@ -94,4 +95,44 @@ test('dados antigos sem carimbo juntam sem perder nada', () => {
   const junto = mesclar(a, b);
   assert.equal(junto.lancamentos.length, 2);
   assert.deepEqual(junto.removidos, {});
+});
+
+test('aparelho com dados antigos (sem origem) NÃO duplica os dados do Drive', () => {
+  // notebook com os dados do app antigo de junho: mesmos lançamentos, códigos diferentes
+  const antigo = { contas: [{ id: 1, nome: 'Santander', saldo: 746.97 }], cartoes: [{ id: 1, nome: 'Nubank' }],
+    lancamentos: [{ id: 1780688724349, descricao: 'Escola Laura', valor: -980.68 }], categorias: [{ id: 1, nome: 'Moradia' }] };
+  // Drive com a importação do Organizze (já com origem, como fica a partir da v1.3.2)
+  const drive = garantirGeracao({ contas: [{ id: 1793844049469, nome: 'Santander', saldo: 63.41 }], cartoes: [{ id: 1793844049556, nome: 'Nubank' }],
+    lancamentos: [{ id: 1793844049700, descricao: 'Escola Laura - Dantas', valor: -980.68 }], categorias: [{ id: 1, nome: 'Alimentação' }] }, 1000);
+  const r = mesclar(antigo, drive, 5000);
+  assert.deepEqual(r.contas.map((c) => c.saldo), [63.41]);
+  assert.equal(r.cartoes.length, 1);
+  assert.equal(r.lancamentos.length, 1);
+  assert.equal(r.meta.geracao, drive.meta.geracao);
+  // e se o Drive também for antigo (sem origem), vale o Drive
+  const driveVelho = { ...drive, meta: {} };
+  assert.equal(mesclar(antigo, driveVelho, 5000).lancamentos[0].id, 1793844049700);
+});
+
+test('sem origem: o que foi lançado nesta versão (carimbado) não se perde', () => {
+  const local = { contas: [], cartoes: [], categorias: [], lancamentos: [{ id: 5, descricao: 'antigo' }, { id: 9, descricao: 'novo offline', atualizadoEm: 3000 }] };
+  const drive = garantirGeracao({ contas: [], cartoes: [], categorias: [], lancamentos: [{ id: 7, descricao: 'do Drive' }] }, 1000);
+  assert.deepEqual(mesclar(local, drive, 5000).lancamentos.map((l) => l.id), [7, 9]);
+});
+
+test('restauração (nova geração) continua valendo sobre a origem batizada', () => {
+  const batizado = garantirGeracao({ contas: [], cartoes: [], categorias: [], lancamentos: [{ id: 1 }, { id: 2 }] }, 1000);
+  const restaurado = novaGeracao({ contas: [], cartoes: [], categorias: [], lancamentos: [{ id: 1 }] }, 2000);
+  assert.deepEqual(mesclar(batizado, restaurado, 5000).lancamentos.map((l) => l.id), [1]);
+  assert.deepEqual(mesclar(restaurado, batizado, 5000).lancamentos.map((l) => l.id), [1]);
+});
+
+test('dois aparelhos que ganharam identificação ao mesmo tempo continuam juntando', () => {
+  const a = garantirGeracao({ contas: [], cartoes: [], categorias: [], lancamentos: [{ id: 1 }] }, 1000);
+  const b = garantirGeracao({ contas: [], cartoes: [], categorias: [], lancamentos: [{ id: 1 }] }, 1001);
+  const a2 = carimbar(a, { ...a, lancamentos: [...a.lancamentos, { id: 2 }] }, 2000);
+  const b2 = carimbar(b, { ...b, lancamentos: [...b.lancamentos, { id: 3 }] }, 2100);
+  const r1 = mesclar(a2, b2, 5000), r2 = mesclar(b2, a2, 5000);
+  assert.deepEqual(r1.lancamentos.map((l) => l.id).sort(), [1, 2, 3]);
+  assert.equal(r1.meta.geracao, r2.meta.geracao);
 });

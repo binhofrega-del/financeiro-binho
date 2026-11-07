@@ -37,9 +37,12 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin || !url.pathname.startsWith(BASE)) return;
 
+  // só a página do app (raiz ou index.html) é tratada como app; outros arquivos abertos direto passam reto
+  const ehPaginaDoApp = url.pathname === BASE || url.pathname === BASE + 'index.html';
+  if (req.mode === 'navigate' && !ehPaginaDoApp) return;
   if (req.mode === 'navigate') {
     e.respondWith((async () => {
-      const daRede = fetch(req).then((r) => guardar(BASE + 'index.html', r));
+      const daRede = fetch(req).then((r) => ((r.headers.get('content-type') || '').includes('text/html') ? guardar(BASE + 'index.html', r) : r));
       // rede lenta: depois de 4s mostra a cópia guardada (se houver)
       const espera = new Promise((res) => setTimeout(() => res(null), 4000)).then(() => caches.match(BASE + 'index.html'));
       try {

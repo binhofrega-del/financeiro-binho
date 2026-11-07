@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { entrar, sair, jaAutorizou, tokenValido, lerVersao, baixar, enviar, backupDiario, ErroLogin } from '../services/googleDrive';
 import { gerarId, faturaDaCompra, calcularSaldos, chaveDaData, hojeISO } from '../utils/financas';
-import { carimbar, mesclar, mesmoConteudo, novaGeracao } from '../utils/sync';
+import { carimbar, mesclar, mesmoConteudo, novaGeracao, garantirGeracao } from '../utils/sync';
 import { absorverOcorrenciasSoltas } from '../utils/migracoes';
 
 const AppContext = createContext();
@@ -141,8 +141,15 @@ export function AppProvider({ children }) {
           atual = junto;
         }
       }
+      // dados sem identificação de origem recebem uma antes de ir para o Drive
+      const batizar = !atual.meta?.geracao;
+      if (batizar) {
+        const comOrigem = garantirGeracao(atual);
+        setDados(d => (d.meta?.geracao ? d : { ...d, meta: { ...(d.meta || {}), geracao: comOrigem.meta.geracao, geracaoEm: 0 } }));
+        atual = comOrigem;
+      }
       let versao = arq?.versao ?? null;
-      const precisaEnviar = !arq || pendente || (remoto && !mesmoConteudo(atual, remoto));
+      const precisaEnviar = !arq || pendente || batizar || (remoto && !mesmoConteudo(atual, remoto));
       if (precisaEnviar) {
         const r = await enviar(atual, arq?.id);
         versao = r.versao;
