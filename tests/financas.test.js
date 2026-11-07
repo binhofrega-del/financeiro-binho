@@ -7,7 +7,7 @@ import {
   resumoPeriodo, dividirEmParcelas, dataDaParcela, limiteUsado, diasAteVencimento,
   faturaDaCompra, gerarId, situacaoVencimento, proximaFaturaAPagar,
 } from '../src/utils/financas.js';
-import { absorverOcorrenciasSoltas } from '../src/utils/migracoes.js';
+import { absorverOcorrenciasSoltas, removerProjecoesDeFatura } from '../src/utils/migracoes.js';
 
 const nubank = { id: 1, nome: 'Roxinho', banco: 'Nubank', limite: 5000, diaFechamento: 8, diaVencimento: 15 };
 const contas = [
@@ -146,7 +146,7 @@ test('dias até o vencimento usa calendário real', () => {
 });
 
 // ── Previsto / resumo ───────────────────────────────────────────────────────
-test('previsto respeita exceções e término dos fixos; fatura em aberto não entra (igual Organizze)', () => {
+test('previsto respeita exceções e término dos fixos; fatura em aberto entra no vencimento (igual Organizze)', () => {
   const dados = {
     contas, cartoes: [nubank],
     lancamentos: [
@@ -158,13 +158,13 @@ test('previsto respeita exceções e término dos fixos; fatura em aberto não e
       { id: 4, valor: -60, data: '2026-11-20', tipo: 'despesa', cartaoId: 1, faturaMes: 11, faturaAno: 2026 },
     ],
   };
-  // 1000 − 100 (set) − 0 (out, exceção) − 100 (nov) + 500; faturas em aberto não entram
-  assert.equal(saldoPrevisto(dados, '2026-11-30'), 1300);
-  // dezembro: fixo terminou; fatura de dez continua fora até ser paga
-  assert.equal(saldoPrevisto(dados, '2026-12-31'), 1300);
+  // 1000 − 100 (set) − 0 (out, exceção) − 100 (nov) + 500 − 80 (fatura de nov, vence 15/11)
+  assert.equal(saldoPrevisto(dados, '2026-11-30'), 1220);
+  // dezembro: fixo terminou; fatura de dez (60) entra no vencimento
+  assert.equal(saldoPrevisto(dados, '2026-12-31'), 1160);
   // pagando a fatura de nov (80) em 10/11 pelo Santander, ela passa a contar nessa data
   const pago = { ...dados, cartoes: [{ ...nubank, faturasPagas: { '2026-11': { pago: true, contaId: 1, valor: 80, data: '2026-11-10' } } }] };
-  assert.equal(saldoPrevisto(pago, '2026-11-09'), 900); // antes do pagamento e do fixo de 10/11
+  assert.equal(saldoPrevisto(pago, '2026-11-09'), 900); // paga em 10/11: conta na data do pagamento
   assert.equal(saldoPrevisto(pago, '2026-11-30'), 1220);
 });
 
@@ -179,8 +179,9 @@ test('Home e Fluxo usam o mesmo resumo do mês (bug 5)', () => {
   const r = resumoPeriodo(dados, '2026-11-01', '2026-11-30');
   assert.equal(r.entradasPrev, 5000); // salário fixo se repete em novembro (último dia)
   assert.equal(r.itens[0].data, '2026-11-30');
-  assert.equal(r.saidasPrev, 0);      // fatura de novembro em aberto não entra nas saídas
-  assert.equal(r.faturas.length, 1);  // mas aparece na lista para ser paga
+  assert.equal(r.saidasPrev, 40);     // Netflix via fatura de novembro (em aberto, entra no previsto)
+  assert.equal(r.saidasReais, 0);     // no realizado só depois de paga
+  assert.equal(r.faturas.length, 1);
 });
 
 test('lista de conta não traz itens de cartão', () => {
@@ -226,4 +227,31 @@ test('reparo: ocorrência solta no fim do export volta para o fixo (e sai do lim
   assert.deepEqual(r.map((l) => l.id), [1, 3]);
   assert.equal(r[0].fixoFimData, '2029-12');
   assert.deepEqual(absorverOcorrenciasSoltas(r), r); // idempotente
+});
+
+test('compra nova no cartão mexe na fatura e no previsto', () => {
+  const cartao = { ...nubank, contaPagamentoId: 1 };
+  const base = { contas, cartoes: [cartao], lancamentos: [{ id: 1, valor: -794.21, data: '2026-11-02', tipo: 'despesa', cartaoId: 1, faturaMes: 11, faturaAno: 2026 }] };
+  const antes = saldoPrevisto(base, '2026-12-31');
+  const depois = saldoPrevisto({ ...base, lancamentos: [...base.lancamentos, { id: 2, valor: -46.2, data: '2026-11-07', tipo: 'despesa', cartaoId: 1, faturaMes: 11, faturaAno: 2026 }] }, '2026-12-31');
+  assert.equal(antes, F2(1000 - 794.21));
+  assert.equal(depois, F2(antes - 46.2));
+  const f = faturasNoPeriodo([cartao], base.lancamentos, '2026-12-01', '2026-12-31')[0];
+  assert.equal(f._contaIdPagamento, 1); // em aberto: aparece na conta que costuma pagar
+});
+const F2 = (v) => Math.round(v * 100) / 100;
+
+test('reparo: linhas "Fatura <mês>" congeladas do Organizze saem da conta', () => {
+  const dados = {
+    contas, cartoes: [{ ...nubank }],
+    lancamentos: [
+      { id: 1, descricao: 'Fatura Dezembro 2026', valor: -794.21, data: '2026-12-07', tipo: 'despesa', categoria: 'Outros', contaId: 1, pago: false },
+      { id: 2, descricao: 'Fatura Nubank - Nubank / mercado pago', valor: 3217.34, data: '2024-07-24', tipo: 'receita', categoria: 'Outras receitas', contaId: 2, pago: true },
+      { id: 3, descricao: 'Fatura Janeiro 2027', valor: -10, data: '2027-01-07', tipo: 'despesa', categoria: 'Moradia', contaId: 1, pago: false }, // categoria do usuário: fica
+    ],
+  };
+  const r = removerProjecoesDeFatura(dados);
+  assert.deepEqual(r.lancamentos.map((l) => l.id), [2, 3]);
+  assert.equal(r.cartoes[0].contaPagamentoId, 1);
+  assert.equal(removerProjecoesDeFatura(r), r); // idempotente
 });

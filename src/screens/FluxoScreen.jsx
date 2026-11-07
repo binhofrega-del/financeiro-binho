@@ -397,7 +397,7 @@ function CardLancamento({ lanc, onClick }) {
         </div>
         <div style={{ textAlign:'right', flexShrink:0 }}>
           <p style={{ fontSize:15, fontWeight:700, color:'#dc2626' }}>-{formatarMoeda(Math.abs(lanc.valor))}</p>
-          <p style={{ fontSize:10, color:lanc.pago?'#16a34a':'#aaa', fontWeight:600, marginTop:2 }}>{lanc.pago?'✓ Pago':'a pagar · fora do previsto'}</p>
+          <p style={{ fontSize:10, color:lanc.pago?'#16a34a':'#aaa', fontWeight:600, marginTop:2 }}>{lanc.pago?'✓ Pago':'não pago'}</p>
         </div>
       </div>
     );

@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useRef, useCallback } f
 import { entrar, sair, jaAutorizou, tokenValido, lerVersao, baixar, enviar, backupDiario, ErroLogin } from '../services/googleDrive';
 import { gerarId, faturaDaCompra, calcularSaldos, chaveDaData, hojeISO } from '../utils/financas';
 import { carimbar, mesclar, mesmoConteudo, novaGeracao, garantirGeracao } from '../utils/sync';
-import { absorverOcorrenciasSoltas } from '../utils/migracoes';
+import { absorverOcorrenciasSoltas, removerProjecoesDeFatura } from '../utils/migracoes';
 
 const AppContext = createContext();
 
@@ -67,7 +67,7 @@ function aplicarMigracoes(dados) {
     cartaoId: l.cartaoId || null,
     contaId: l.contaId || null,
   }));
-  return {
+  return removerProjecoesDeFatura({
     ...dados,
     contas: dados.contas || [],
     cartoes: dados.cartoes || [],
@@ -75,7 +75,7 @@ function aplicarMigracoes(dados) {
     lancamentos: absorverOcorrenciasSoltas(migrarFaturaParcelados(lancamentos, dados.cartoes || [])),
     removidos: dados.removidos || {},
     meta: dados.meta || {},
-  };
+  });
 }
 
 const CHAVE_DADOS_INICIAL = 'financeiro-app-dados';

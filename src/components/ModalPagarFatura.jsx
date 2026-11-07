@@ -5,7 +5,10 @@ import { formatarMoeda } from '../utils/formatters';
 
 export default function ModalPagarFatura({ fatura, onFechar }) {
   const { contas, pagarFatura, desfazerFatura } = useApp();
-  const [contaSelecionada, setContaSelecionada] = useState(contas[0]?.id || null);
+  // já vem marcada a conta que costuma pagar este cartão (ex.: Santander)
+  const [contaSelecionada, setContaSelecionada] = useState(
+    contas.some(c => c.id === fatura._contaIdPagamento) ? fatura._contaIdPagamento : (contas[0]?.id || null)
+  );
 
   // Se já está paga, pergunta se quer desfazer
   if (fatura.pago) {

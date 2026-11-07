@@ -20,6 +20,7 @@ import {
   faturaQueVenceEm, faturaDaCompra, vencimentoDaFatura, mesmoMes, hojeISO, inicioDoMes,
   calcularSaldos, itensDaFatura, totalDosItens, faturaAtual, MESES, arred, pad2,
 } from './financas.js';
+import { RE_PROJECAO_FATURA } from './migracoes.js';
 
 const MESES_NORM = MESES.map((m) => normalizar(m));
 
@@ -121,6 +122,7 @@ export function converterOrganizze(abas, opcoes = {}) {
   const cartoes = [];
   const linhas = []; // itens intermediários
   const esperado = {}; // contaId → soma dos "Pago" no export
+  const contasQuePagamCartao = [];
 
   // 1) Abas → contas/cartões + linhas
   for (const [nomeAba, rows] of Object.entries(abas)) {
@@ -162,9 +164,16 @@ export function converterOrganizze(abas, opcoes = {}) {
         if (!data) continue;
         const valor = lerValor(col(r, 'Valor'));
         const pago = normalizar(col(r, 'Situação', 'Situacao')) === 'pago';
+        const descricao = String(col(r, 'Descrição', 'Descricao')).trim();
+        // "Fatura <Mês> <Ano>" sem categoria e não paga: é a previsão de pagamento da fatura que o
+        // Organizze gera sozinho na conta que paga o cartão — o app calcula a fatura de verdade
+        if (!pago && !String(col(r, 'Categoria')).trim() && RE_PROJECAO_FATURA.test(descricao)) {
+          contasQuePagamCartao.push(conta.id);
+          continue;
+        }
         if (pago) esperado[conta.id] += valor;
         linhas.push({
-          aba: nomeAba, data, descricao: String(col(r, 'Descrição', 'Descricao')).trim(),
+          aba: nomeAba, data, descricao,
           categoria: String(col(r, 'Categoria')).trim() || 'Outros', valor, pago, contaId: conta.id,
           observacao: String(col(r, 'Informações adicionais', 'Informacoes adicionais')).trim(),
           tags: String(col(r, 'Tags')).trim(),
@@ -344,6 +353,7 @@ export function converterOrganizze(abas, opcoes = {}) {
   const categorias = nomesCat.map((nome, i) => ({ id: i + 1, nome, emoji: emojiDaCategoria(nome) }));
 
   cartoes.forEach((c) => delete c._aba);
+  if (cartoes.length === 1 && contasQuePagamCartao.length) cartoes[0].contaPagamentoId = contasQuePagamCartao[0];
   const dados = { contas, cartoes, lancamentos, categorias };
 
   // 7) Conferência

@@ -29,6 +29,7 @@ function exemplo() {
       L('15.12.2026', 'IPTU', 'Moradia', 0, 'Não pago'),
       L('15.01.2027', 'IPTU', 'Moradia', 0, 'Não pago'),
       L('01.06.2027', 'Seguro', 'Outros', -10, 'Não pago'), // export vai até jun/27
+      L('07.12.2026', 'Fatura Dezembro 2026', '', -20, 'Não pago'), // previsão do Organizze → ignora
     ],
     Carteira: [
       L('10.10.2026', 'Transferencia', 'Transferências', 200),
@@ -109,4 +110,10 @@ test('cartão: fatura nomeada pelo vencimento, estorno abate, projeção ignorad
   assert.equal(streaming[0].fixo, true);
   assert.equal(totalDosItens(itensDaFatura(dados.lancamentos, cartao, { ano: 2026, mes: 12 })), 20); // jan/27
   assert.ok(!dados.lancamentos.some((l) => l.descricao.startsWith('Fatura ')));
+});
+
+test('previsão "Fatura <mês>" da conta é ignorada e vira a conta de pagamento do cartão', () => {
+  const { dados } = converterOrganizze(exemplo(), { hoje: '2026-11-04' });
+  assert.ok(!dados.lancamentos.some((l) => l.descricao === 'Fatura Dezembro 2026'));
+  assert.equal(dados.cartoes[0].contaPagamentoId, dados.contas[0].id);
 });
