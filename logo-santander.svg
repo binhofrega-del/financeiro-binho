@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <rect width="200" height="200" rx="40" fill="white"/>
+  <!-- Chama do Santander - elipse vermelha base -->
+  <ellipse cx="100" cy="155" rx="68" ry="22" fill="#EC0000"/>
+  <!-- Chama grande central -->
+  <path d="M100,30 C100,30 72,55 72,90 C72,115 86,128 100,128 C114,128 128,115 128,90 C128,55 100,30 100,30Z" fill="#EC0000"/>
+  <!-- Chama esquerda -->
+  <path d="M68,50 C68,50 48,68 48,92 C48,110 58,118 68,118 C78,118 85,110 85,95 C85,75 68,50 68,50Z" fill="#EC0000"/>
+  <!-- Chama direita -->
+  <path d="M132,50 C132,50 152,68 152,92 C152,110 142,118 132,118 C122,118 115,110 115,95 C115,75 132,50 132,50Z" fill="#EC0000"/>
+</svg>
