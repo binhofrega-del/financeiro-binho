@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { X, Search, SlidersHorizontal, Calendar } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import IconeCategoria from './IconeCategoria';
+import { categoriaDoTipo } from '../utils/categorias';
 
 const PERIODOS = ['Hoje', 'Mês atual', 'Este ano', 'Últimos 7 dias', 'Últimos 15 dias', 'Últimos 30 dias', 'Período personalizado'];
 
@@ -205,7 +207,7 @@ export default function FiltroModal({ filtros, onAplicar, onFechar }) {
           <SecaoLabel label="Categoria" />
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
             {categorias.map(c => (
-              <Chip key={c.id} label={`${c.emoji} ${c.nome}`} ativo={(local.categorias||[]).includes(c.nome)} onClick={() => toggleArr('categorias', c.nome)} />
+              <Chip key={c.id} label={<><IconeCategoria nome={c.nome} tipo={categoriaDoTipo(c.nome, 'despesa') ? 'despesa' : 'receita'} size={20} />{c.nome}</>} ativo={(local.categorias||[]).includes(c.nome)} onClick={() => toggleArr('categorias', c.nome)} />
             ))}
           </div>
 
@@ -246,7 +248,7 @@ function SecaoLabel({ label }) {
 
 function Chip({ label, ativo, onClick }) {
   return (
-    <button onClick={onClick} style={{ padding: '7px 14px', borderRadius: 20, border: `1.5px solid ${ativo ? '#16a34a' : '#ccc'}`, background: ativo ? '#dcfce7' : 'white', color: ativo ? '#16a34a' : '#555', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+    <button onClick={onClick} style={{ padding: '7px 14px', borderRadius: 20, border: `1.5px solid ${ativo ? '#16a34a' : '#ccc'}`, background: ativo ? '#dcfce7' : 'white', color: ativo ? '#16a34a' : '#555', fontWeight: 600, fontSize: 13, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
       {label}
     </button>
   );

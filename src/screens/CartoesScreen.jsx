@@ -1,7 +1,9 @@
 import { useState, useMemo } from 'react';
 import { ChevronLeft, ChevronRight, Plus, CreditCard } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { formatarMoeda, nomeMes, emojiCategoria, logoParaBanco } from '../utils/formatters';
+import { formatarMoeda, nomeMes, logoParaBanco } from '../utils/formatters';
+import IconeCategoria from '../components/IconeCategoria';
+import { visualCategoria } from '../utils/categorias';
 import DetalheModal from '../components/DetalheModal';
 import { useAcoesLancamento } from '../hooks/useAcoesLancamento';
 import {
@@ -162,11 +164,11 @@ export default function CartoesScreen({ setAba }) {
             {porCategoria.map(({ cat, val, pct }) => (
               <div key={cat} style={{ marginBottom: 10 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <span style={{ fontSize: 13, color: '#444' }}>{emojiCategoria(cat)} {cat}</span>
+                  <span style={{ fontSize: 13, color: '#444', display: 'flex', alignItems: 'center', gap: 8 }}><IconeCategoria nome={cat} tipo="despesa" size={24} />{cat}</span>
                   <span style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>{formatarMoeda(val)}</span>
                 </div>
                 <div style={{ background: '#f3f4f6', borderRadius: 3, height: 5 }}>
-                  <div style={{ background: '#16a34a', height: 5, borderRadius: 3, width: `${pct}%` }} />
+                  <div style={{ background: visualCategoria(cat, 'despesa').cor, height: 5, borderRadius: 3, width: `${pct}%` }} />
                 </div>
                 <p style={{ fontSize: 10, color: '#aaa', marginTop: 2 }}>{pct.toFixed(0)}% da fatura</p>
               </div>
@@ -192,9 +194,7 @@ export default function CartoesScreen({ setAba }) {
                 {items.map(l => (
                   <div key={`${l.id}-${l._fixoMesAno || ''}`} onClick={() => setDetalhe(l)}
                     style={{ background: 'white', borderRadius: 13, padding: '11px 13px', marginBottom: 7, display: 'flex', alignItems: 'center', gap: 11, boxShadow: '0 1px 4px rgba(0,0,0,0.05)', cursor: 'pointer' }}>
-                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>
-                      {emojiCategoria(l.categoria)}
-                    </div>
+                    <IconeCategoria nome={l.categoria} tipo={l.tipo} size={42} corFundoSelo="#ffffff" selo={l.fixo ? 'fixo' : l.parcelado ? 'parcela' : null} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ fontSize: 14, fontWeight: 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.descricao}</p>
                       <p style={{ fontSize: 11, color: '#aaa', marginTop: 1 }}>{l.categoria}{l.parcelado ? ` · ${l.parcela}/${l.totalParcelas}x` : ''}{l.fixo ? ' · fixo' : ''}</p>
@@ -213,7 +213,7 @@ export default function CartoesScreen({ setAba }) {
 
       {/* FAB */}
       <button onClick={acoes.novo}
-        style={{ position: 'absolute', bottom: 80, right: 20, width: 56, height: 56, borderRadius: '50%', background: '#16a34a', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 16px rgba(22,163,74,0.45)', zIndex: 10 }}>
+        style={{ position: 'absolute', bottom: 80, right: 20, width: 56, height: 56, borderRadius: '50%', background: '#dc2f45', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 6px 18px rgba(0,0,0,0.22)', zIndex: 10 }}>
         <Plus size={28} color="white" />
       </button>
 

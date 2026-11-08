@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Trash2, Copy, ThumbsUp, ThumbsDown, Pencil, X, AlertTriangle } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { formatarMoeda } from '../utils/formatters';
-import { emojiCategoria } from '../utils/formatters';
+import IconeCategoria from './IconeCategoria';
+import IconeBanco from './IconeBanco';
 
 export default function DetalheModal({ lanc, onFechar, onEditar, onTogglePago, onExcluir }) {
   const { togglePago, setPagoFixo, removerLancamento, removerParcelasDoGrupo } = useApp();
@@ -13,8 +14,6 @@ export default function DetalheModal({ lanc, onFechar, onEditar, onTogglePago, o
   const isCartao = !!lanc.cartaoId;
   const isFatura = !!lanc._isFatura;
   const cor = isReceita ? '#16a34a' : isTransf ? '#1d4ed8' : '#dc2626';
-  const bgIcon = isReceita ? '#dcfce7' : isTransf ? '#dbeafe' : '#fee2e2';
-  const emoji = emojiCategoria(lanc.categoria);
 
   function duplicar() {
     // Cópia "limpa": sem vínculo com fixo, grupo de parcelas ou exceções do original
@@ -82,8 +81,10 @@ export default function DetalheModal({ lanc, onFechar, onEditar, onTogglePago, o
 
         {/* Ícone + nome + valor */}
         <div style={{ textAlign: 'center', padding: '8px 24px 20px' }}>
-          <div style={{ width: 64, height: 64, borderRadius: '50%', background: bgIcon, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 30, margin: '0 auto 14px' }}>
-            {emoji}
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 14 }}>
+            {isFatura
+              ? <IconeBanco nome={lanc._cartaoBanco} icone={(lanc._cartaoBanco || '?').slice(0, 2).toUpperCase()} cor={lanc._cartaoCor || '#820ad1'} size={64} />
+              : <IconeCategoria nome={lanc.categoria} tipo={lanc.tipo} size={64} corFundoSelo="#ffffff" selo={lanc.fixo ? 'fixo' : lanc.parcelado ? 'parcela' : null} />}
           </div>
           <p style={{ fontSize: 17, fontWeight: 700, color: '#111', marginBottom: 6 }}>{lanc.descricao}</p>
           <p style={{ fontSize: 28, fontWeight: 800, color: cor }}>
@@ -143,7 +144,7 @@ export default function DetalheModal({ lanc, onFechar, onEditar, onTogglePago, o
         {/* Detalhes */}
         <div style={{ padding: '20px 24px 0', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 24px' }}>
           <DetalheItem label="Data" valor={dataFormatada} />
-          <DetalheItem label="Categoria" valor={`${emoji} ${lanc.categoria}`} />
+          <DetalheItem label="Categoria" valor={lanc.categoria} />
           {!isCartao && <DetalheItem label="Status" valor={lanc.pago ? (isReceita ? '✅ Recebido' : '✅ Pago') : (isReceita ? '⏳ Não recebido' : '⏳ Não pago')} />}
           <DetalheItem label="Tipo" valor={isReceita ? '⬆ Receita' : isTransf ? '↔ Transferência' : '⬇ Despesa'} />
         </div>

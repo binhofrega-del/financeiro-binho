@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { X, Check, ChevronDown } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { nomeMes } from '../utils/formatters';
+import SeletorCategoria from './SeletorCategoria';
 import {
   hojeISO, gerarId, faturaDaCompra, somarMeses, difMeses, chaveDaData,
   dividirEmParcelas, dataDaParcela, PERIODOS_PARCELA, nomeFatura,
@@ -213,14 +214,8 @@ export default function ModalLancamento({ editando, onFechar, cartaoPreSeleciona
           {/* Categoria */}
           <div style={{ marginBottom: 14 }}>
             <label style={lbl}>Categoria</label>
-            <div style={{ position: 'relative' }}>
-              <select value={form.categoria} onChange={e => set('categoria', e.target.value)} style={{ ...inp, appearance: 'none', paddingRight: 36 }}>
-                {categorias.map(c => (
-                  <option key={c.id} value={c.nome}>{c.emoji} {c.nome}</option>
-                ))}
-              </select>
-              <ChevronDown size={16} color="#888" style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-            </div>
+            <SeletorCategoria categorias={categorias} valor={form.categoria} tipo={form.tipo}
+              onChange={v => set('categoria', v)} estiloCampo={inp} />
           </div>
 
           {/* Observação */}

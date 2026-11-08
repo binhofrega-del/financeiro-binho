@@ -1,19 +1,22 @@
 import { Home, ArrowLeftRight, CreditCard, Settings } from 'lucide-react';
 
+// Barra de abas no estilo do Organizze: só ícones, a aba ativa em verde.
 const abas = [
-  { id: 'home', label: 'Home', Icon: Home },
-  { id: 'fluxo', label: 'Fluxo', Icon: ArrowLeftRight },
+  { id: 'home', label: 'Início', Icon: Home },
+  { id: 'fluxo', label: 'Fluxo de caixa', Icon: ArrowLeftRight },
   { id: 'cartoes', label: 'Cartões', Icon: CreditCard },
-  { id: 'config', label: 'Config', Icon: Settings },
+  { id: 'config', label: 'Configurações', Icon: Settings },
 ];
 
 export default function BottomNav({ aba, setAba }) {
   return (
-    <nav style={{
+    <nav aria-label="Navegação principal" style={{
       display: 'flex',
-      background: 'white',
-      borderTop: '1px solid #e5e7eb',
+      justifyContent: 'space-around',
+      background: '#fdfcf8',
+      borderTop: '1px solid #ecebe5',
       paddingBottom: 'env(safe-area-inset-bottom)',
+      flexShrink: 0,
     }}>
       {abas.map(({ id, label, Icon }) => {
         const ativo = aba === id;
@@ -21,21 +24,22 @@ export default function BottomNav({ aba, setAba }) {
           <button
             key={id}
             onClick={() => setAba(id)}
+            aria-label={label}
+            title={label}
+            aria-current={ativo ? 'page' : undefined}
             style={{
               flex: 1,
+              height: 60,
               display: 'flex',
-              flexDirection: 'column',
               alignItems: 'center',
-              gap: 3,
-              padding: '10px 4px 12px',
+              justifyContent: 'center',
               border: 'none',
               background: 'none',
               cursor: 'pointer',
-              color: ativo ? '#16a34a' : '#9ca3af',
+              color: ativo ? '#1fae55' : '#1c1c1a',
             }}
           >
-            <Icon size={22} strokeWidth={ativo ? 2.5 : 1.8} />
-            <span style={{ fontSize: 10, fontWeight: ativo ? 700 : 500 }}>{label}</span>
+            <Icon size={28} strokeWidth={ativo ? 2.2 : 1.7} />
           </button>
         );
       })}

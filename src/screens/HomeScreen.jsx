@@ -196,7 +196,7 @@ export default function HomeScreen({ setAba, irParaFluxo }) {
 
       {/* Fix 1: FAB para novo lançamento */}
       <button onClick={() => setModalAberto(true)}
-        style={{ position: 'fixed', bottom: 80, right: 20, width: 56, height: 56, borderRadius: '50%', background: '#16a34a', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 16px rgba(22,163,74,0.45)', zIndex: 10 }}>
+        style={{ position: 'fixed', bottom: 80, right: 20, width: 56, height: 56, borderRadius: '50%', background: '#dc2f45', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 6px 18px rgba(0,0,0,0.22)', zIndex: 10 }}>
         <Plus size={28} color="white" />
       </button>
 
