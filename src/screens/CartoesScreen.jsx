@@ -1,11 +1,13 @@
 import { useState, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, Plus, CreditCard } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, CreditCard, FileSpreadsheet } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { formatarMoeda, nomeMes, logoParaBanco } from '../utils/formatters';
 import IconeCategoria from '../components/IconeCategoria';
 import { visualCategoria } from '../utils/categorias';
 import DetalheModal from '../components/DetalheModal';
 import { useAcoesLancamento } from '../hooks/useAcoesLancamento';
+import { csvDaFatura, nomeArquivoFatura } from '../utils/exportarFatura';
+import { baixarTexto } from '../utils/backup';
 import {
   hojeISO, somarMeses, mesmoMes, faturaAtual, itensDaFatura, totalDosItens,
   infoPagamentoFatura, limiteUsado, situacaoVencimento, dataFechamento, dataVencimento, nomeFatura,
@@ -29,6 +31,11 @@ export default function CartoesScreen({ setAba }) {
   const anoAtual = fat ? fat.ano : 0;
 
   function mudarMes(dir) { setFatEscolhida(somarMeses(fat, dir)); }
+
+  // Mesmo arquivo do "Exportar para planilhas" do Organizze (usado na conciliação)
+  function exportarCsv() {
+    baixarTexto(nomeArquivoFatura(cartao, fat), csvDaFatura(lancamentos, cartao, fat));
+  }
 
   function mudarCartao(dir) {
     let idx = cartaoIdx + dir;
@@ -149,6 +156,10 @@ export default function CartoesScreen({ setAba }) {
             <span style={{ fontSize: 14, fontWeight: 700, color: '#111' }}>Fatura de {nomeFatura({ ano: anoAtual, mes: mesAtual }, cartao)}</span>
             <button onClick={() => mudarMes(1)} style={navBtnDark}><ChevronRight size={18} /></button>
           </div>
+          <button onClick={exportarCsv} disabled={lancCartao.length === 0} aria-label="Exportar fatura para planilha (CSV)" title="Exportar para planilhas"
+            style={{ background: 'white', border: 'none', borderRadius: 12, width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: lancCartao.length ? 'pointer' : 'default', opacity: lancCartao.length ? 1 : 0.4, color: '#111', boxShadow: '0 1px 4px rgba(0,0,0,0.05)', flexShrink: 0 }}>
+            <FileSpreadsheet size={20} />
+          </button>
           {!mesmoMes(fat, fatAberta) && (
             <button onClick={() => setFatEscolhida(null)}
               style={{ background: '#16a34a', color: 'white', border: 'none', borderRadius: 10, padding: '8px 12px', fontWeight: 700, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
